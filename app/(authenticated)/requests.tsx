@@ -1,3 +1,4 @@
+import { useRouter } from 'expo-router';
 import { Calendar, Droplet, HeartHandshake, MapPin } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -7,6 +8,7 @@ import { supabase } from '../../src/lib/supabase';
 
 export default function RequestsScreen() {
   const { session } = useAuth();
+  const router = useRouter();
   const [requests, setRequests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -51,8 +53,7 @@ export default function RequestsScreen() {
   };
 
   const handleHelp = (requestId: string) => {
-    // TODO: Implement help logic (e.g., update status to ACCEPTED or navigate to details)
-    alert("Help feature coming soon!");
+    router.push(`/request/${requestId}`);
   };
 
   const renderItem = ({ item }: { item: any }) => (
