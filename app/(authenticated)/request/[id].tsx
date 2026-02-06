@@ -1,13 +1,15 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ArrowLeft, Clock, MapPin, Phone, User as UserIcon } from 'lucide-react-native';
+import { ArrowLeft, Clock, HeartHandshake, MapPin, Phone, User as UserIcon } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { COLORS, SHADOWS, SPACING, TYPOGRAPHY } from '../../../src/constants/theme';
+import { useAuth } from '../../../src/context/AuthProvider';
 import { supabase } from '../../../src/lib/supabase';
 
 export default function RequestDetailsScreen() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
+  const { session } = useAuth();
   const [request, setRequest] = useState<any>(null);
   const [responses, setResponses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -32,13 +34,12 @@ export default function RequestDetailsScreen() {
       if (requestError) throw requestError;
       setRequest(requestData);
 
-      // Fetch Responses (assuming a 'responses' table exists based on context)
-      // If table doesn't exist, this might fail, so we'll wrap in try/catch or just handle error
+      // Fetch Responses (Donations)
       const { data: responsesData, error: responsesError } = await supabase
-        .from('responses')
+        .from('donations')
         .select(`
             *,
-            profiles:responder_id (
+            profiles:donor_id (
                 full_name,
                 phone,
                 blood_type
@@ -56,6 +57,26 @@ export default function RequestDetailsScreen() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleHelp = async () => {
+      try {
+          setLoading(true);
+          const { error } = await supabase.from('donations').insert({
+              request_id: id,
+              donor_id: session?.user.id,
+              status: 'EN_ROUTE' 
+          });
+
+          if (error) throw error;
+          
+          Alert.alert("Thank you!", "Your offer to help has been sent.");
+          fetchDetails(); // Refresh to show the new response
+      } catch (error: any) {
+          Alert.alert("Error", error.message);
+      } finally {
+          setLoading(false);
+      }
   };
 
   const getStatusColor = (status: string) => {
@@ -126,6 +147,14 @@ export default function RequestDetailsScreen() {
                     <Text style={styles.noteText}>{request.note}</Text>
                 </View>
             )}
+
+            {/* Help Button */}
+            {session?.user.id !== request.requester_id && !responses.some(r => r.donor_id === session?.user.id) && (
+                <TouchableOpacity style={styles.helpButton} onPress={handleHelp}>
+                    <HeartHandshake size={20} color={COLORS.white} />
+                    <Text style={styles.helpButtonText}>I CAN HELP</Text>
+                </TouchableOpacity>
+            )}
         </View>
 
         {/* Responses Section */}
@@ -133,7 +162,7 @@ export default function RequestDetailsScreen() {
         
         {responses.length === 0 ? (
             <View style={styles.emptyState}>
-                <Text style={styles.emptyText}>No responses yet.</Text>
+                <Text style={styles.emptyText}>No donations yet.</Text>
             </View>
         ) : (
             <View style={styles.responsesList}>
@@ -326,5 +355,21 @@ const styles = StyleSheet.create({
       color: COLORS.primary,
       fontSize: TYPOGRAPHY.sizes.xs,
       fontWeight: 'bold'
+  },
+  helpButton: {
+      backgroundColor: COLORS.success,
+      borderRadius: SPACING.sm,
+      padding: SPACING.md,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: SPACING.sm,
+      marginTop: SPACING.md,
+      ...SHADOWS.button
+  },
+  helpButtonText: {
+      color: COLORS.white,
+      fontWeight: 'bold',
+      fontSize: TYPOGRAPHY.sizes.md
   }
 });
