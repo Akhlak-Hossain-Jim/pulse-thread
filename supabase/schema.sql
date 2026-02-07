@@ -60,6 +60,9 @@ create policy "Donations are viewable by involved parties." on public.donations 
 create policy "Donors can accept requests." on public.donations for insert with check (auth.uid() = donor_id);
 create policy "Involved parties can update donations." on public.donations for update using (auth.uid() = donor_id or auth.uid() in (select requester_id from public.requests where id = request_id));
 
+-- Add cancellation_reason if not exists
+ALTER TABLE public.donations ADD COLUMN IF NOT EXISTS cancellation_reason TEXT;
+
 -- Nearby Donors Function
 create or replace function get_nearby_donors(
   lat float,
