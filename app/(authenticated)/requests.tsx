@@ -24,7 +24,8 @@ export default function RequestsScreen() {
           profiles:requester_id (
             full_name,
             phone
-          )
+          ),
+          donations(status)
         `)
         .eq('status', 'PENDING')
         .neq('requester_id', session.user.id) // Don't show own requests
@@ -80,9 +81,14 @@ export default function RequestsScreen() {
         </View>
         {item.note && (
             <Text style={styles.note} numberOfLines={2}>
-                "{item.note}"
+                &quot;{item.note}&quot;
             </Text>
         )}
+        <View style={styles.statsRow}>
+          <Text style={styles.statText}>Needed: {item.units_needed || 1}</Text>
+          <View style={styles.statDivider} />
+          <Text style={styles.statText}>Responses: {item.donations?.filter((d: any) => d.status !== 'CANCELLED').length || 0}</Text>
+        </View>
       </View>
 
       <TouchableOpacity 
@@ -241,5 +247,25 @@ const styles = StyleSheet.create({
       fontSize: TYPOGRAPHY.sizes.md,
       color: COLORS.darkGray,
       textAlign: 'center'
+  },
+  statsRow: {
+    flexDirection: 'row',
+    backgroundColor: COLORS.secondary,
+    padding: SPACING.sm,
+    borderRadius: SPACING.sm,
+    marginTop: SPACING.sm,
+    alignItems: 'center',
+    justifyContent: 'space-around'
+  },
+  statText: {
+    fontSize: TYPOGRAPHY.sizes.sm,
+    color: COLORS.primary,
+    fontWeight: 'bold'
+  },
+  statDivider: {
+    width: 1,
+    height: '80%',
+    backgroundColor: COLORS.primary,
+    opacity: 0.2
   }
 });
