@@ -26,7 +26,7 @@ export const MapScreen = () => {
   const [isDonorActionsVisible, setIsDonorActionsVisible] = useState(false);
 
   
-  const GOOGLE_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY;
+  const GOOGLE_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_ANDROID;
 
   // Debounced reverse geocode to avoid hitting API limit on every frame
   const handleRegionChange = async (region: Region) => {
