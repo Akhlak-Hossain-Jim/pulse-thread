@@ -1,37 +1,50 @@
 import { useRouter } from 'expo-router';
-import { History as HistoryIcon } from 'lucide-react-native';
+import { Droplet, HeartHandshake, History as HistoryIcon } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { COLORS, SHADOWS, SPACING, TYPOGRAPHY } from '../../src/constants/theme';
 import { useAuth } from '../../src/context/AuthProvider';
 import { supabase } from '../../src/lib/supabase';
 
+type ViewMode = 'requests' | 'donations';
+
 export default function HistoryScreen() {
   const { session } = useAuth();
   const router = useRouter();
-  const [myRequests, setMyRequests] = useState<any[]>([]);
+  const [viewMode, setViewMode] = useState<ViewMode>('requests');
+  const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     if (session) {
-        fetchMyRequests();
+        fetchHistory();
     } else {
-        // If no session (shouldn't happen in auth route), stop loading
         setLoading(false);
     }
-  }, [session]);
+  }, [session, viewMode]);
 
-  const fetchMyRequests = async () => {
+  const fetchHistory = async () => {
+      setLoading(true);
       try {
-        const { data, error } = await supabase
-            .from('requests')
-            .select('*')
-            .eq('requester_id', session?.user.id)
-            .order('created_at', { ascending: false });
+        let result;
         
-        if (!error && data) {
-            setMyRequests(data);
+        if (viewMode === 'requests') {
+            result = await supabase
+                .from('requests')
+                .select('*, donations(status)')
+                .eq('requester_id', session?.user.id)
+                .order('created_at', { ascending: false });
+        } else {
+            result = await supabase
+                .from('donations')
+                .select('*, request:requests(*)')
+                .eq('donor_id', session?.user.id)
+                .order('created_at', { ascending: false });
+        }
+        
+        if (!result.error && result.data) {
+            setData(result.data);
         }
       } catch (error) {
           console.error(error);
@@ -43,41 +56,87 @@ export default function HistoryScreen() {
 
   const onRefresh = () => {
     setRefreshing(true);
-    fetchMyRequests();
+    fetchHistory();
   };
 
   const getStatusColor = (status: string) => {
       switch(status) {
-          case 'PENDING': return COLORS.action; // Blue-ish
-          case 'ACCEPTED': return COLORS.primary; // Red (Active)
-          case 'FULFILLED': return COLORS.success; // Green
+          case 'PENDING': return COLORS.action;
+          case 'ACCEPTED': return COLORS.primary; // Active
+          case 'FULFILLED': return COLORS.success;
+          case 'EN_ROUTE': return COLORS.action;
+          case 'ARRIVED': return COLORS.primary; // Active
+          case 'MATCHED': return COLORS.secondary; // Waiting
+          case 'DONATED': return COLORS.success;
+          case 'CANCELLED': return COLORS.error;
           default: return COLORS.darkGray;
       }
   };
 
-  const renderItem = ({ item }: { item: any }) => (
-    <TouchableOpacity 
-        style={styles.historyCard}
-        onPress={() => router.push(`/request/${item.id}`)}
-    >
-        <View style={styles.historyHeader}>
-            <View style={styles.historyBadge}>
-                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: getStatusColor(item.status) }} />
-                <Text style={[styles.historyStatus, { color: getStatusColor(item.status)}]}>{item.status}</Text>
+  const renderItem = ({ item }: { item: any }) => {
+      const isRequest = viewMode === 'requests';
+      // For donations, we show the request details
+      const displayItem = isRequest ? item : item.request;
+      // As donation, use donation status, else request status
+      const status = isRequest ? item.status : item.status; 
+      
+      // Calculate stats for requests
+      const needed = displayItem?.units_needed || 1;
+      const responses = isRequest && item.donations 
+          ? item.donations.filter((d: any) => d.status !== 'CANCELLED').length 
+          : 0; 
+
+      if (!displayItem) return null; // Handle case where request might be null for donation
+
+      return (
+        <TouchableOpacity 
+            style={styles.historyCard}
+            onPress={() => router.push(`/request/${displayItem.id}`)}
+        >
+            <View style={styles.historyHeader}>
+                <View style={[styles.historyBadge, { backgroundColor: getStatusColor(status) }]}>
+                    <Text style={styles.historyStatus}>{status.replace('_', ' ')}</Text>
+                </View>
+                <Text style={styles.historyDate}>{new Date(item.created_at).toLocaleDateString()}</Text>
             </View>
-            <Text style={styles.historyDate}>{new Date(item.created_at).toLocaleDateString()}</Text>
-        </View>
-        <View style={styles.historyContent}>
-            <Text style={styles.historyTitle}>{item.blood_type} Blood Request</Text>
-            <Text style={styles.historySubtitle} numberOfLines={1}>{item.hospital_name}</Text>
-        </View>
-    </TouchableOpacity>
-  );
+            <View style={styles.historyContent}>
+                <View style={styles.row}>
+                    <Droplet size={16} color={COLORS.primary} fill={COLORS.primary} />
+                    <Text style={styles.historyTitle}>{displayItem.blood_type} Blood {isRequest ? 'Request' : 'Donation'}</Text>
+                </View>
+                <Text style={styles.historySubtitle} numberOfLines={1}>{displayItem.hospital_name}</Text>
+                
+                {isRequest && (
+                    <View style={styles.statsRow}>
+                        <Text style={styles.statText}>Needed: <Text style={styles.statValue}>{needed}</Text></Text>
+                        <View style={styles.statDivider} />
+                        <Text style={styles.statText}>Responded: <Text style={styles.statValue}>{responses}</Text></Text>
+                    </View>
+                )}
+            </View>
+        </TouchableOpacity>
+      );
+  };
 
   return (
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>History</Text>
+      </View>
+
+      <View style={styles.tabsContainer}>
+          <TouchableOpacity 
+            style={[styles.tab, viewMode === 'requests' && styles.activeTab]}
+            onPress={() => setViewMode('requests')}
+          >
+              <Text style={[styles.tabText, viewMode === 'requests' && styles.activeTabText]}>My Requests</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.tab, viewMode === 'donations' && styles.activeTab]}
+            onPress={() => setViewMode('donations')}
+          >
+              <Text style={[styles.tabText, viewMode === 'donations' && styles.activeTabText]}>My Donations</Text>
+          </TouchableOpacity>
       </View>
 
       {loading ? (
@@ -86,7 +145,7 @@ export default function HistoryScreen() {
         </View>
       ) : (
         <FlatList
-            data={myRequests}
+            data={data}
             renderItem={renderItem}
             keyExtractor={(item) => item.id}
             contentContainerStyle={styles.listContent}
@@ -95,8 +154,14 @@ export default function HistoryScreen() {
             }
             ListEmptyComponent={
                 <View style={styles.emptyState}>
-                    <HistoryIcon size={48} color={COLORS.gray} />
-                    <Text style={styles.emptyText}>No requests made yet.</Text>
+                    {viewMode === 'requests' ? (
+                         <HistoryIcon size={48} color={COLORS.gray} />
+                    ) : (
+                         <HeartHandshake size={48} color={COLORS.gray} />
+                    )}
+                    <Text style={styles.emptyText}>
+                        {viewMode === 'requests' ? "No requests made yet." : "No donations made yet."}
+                    </Text>
                 </View>
             }
         />
@@ -123,6 +188,31 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: COLORS.primary,
   },
+  tabsContainer: {
+      flexDirection: 'row',
+      padding: SPACING.md,
+      gap: SPACING.md
+  },
+  tab: {
+      flex: 1,
+      paddingVertical: SPACING.sm,
+      alignItems: 'center',
+      borderRadius: SPACING.xl,
+      backgroundColor: COLORS.white,
+      borderWidth: 1,
+      borderColor: COLORS.gray
+  },
+  activeTab: {
+      backgroundColor: COLORS.primary,
+      borderColor: COLORS.primary
+  },
+  tabText: {
+      fontWeight: 'bold',
+      color: COLORS.darkGray
+  },
+  activeTabText: {
+      color: COLORS.white
+  },
   centered: {
       flex: 1,
       justifyContent: 'center',
@@ -135,36 +225,36 @@ const styles = StyleSheet.create({
   historyCard: {
       backgroundColor: COLORS.white,
       padding: SPACING.md,
-      borderRadius: SPACING.sm,
-      borderLeftWidth: 4,
-      borderLeftColor: COLORS.gray,
+      borderRadius: SPACING.md,
       ...SHADOWS.card
   },
   historyHeader: {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
-      marginBottom: 4
+      marginBottom: SPACING.sm
   },
   historyBadge: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 6,
-      backgroundColor: COLORS.gray,
       paddingHorizontal: 8,
       paddingVertical: 2,
       borderRadius: 12
   },
   historyStatus: {
       fontSize: TYPOGRAPHY.sizes.xs,
-      fontWeight: 'bold'
+      fontWeight: 'bold',
+      color: COLORS.white
   },
   historyDate: {
       fontSize: TYPOGRAPHY.sizes.xs,
       color: COLORS.darkGray
   },
   historyContent: {
-      marginTop: 4
+      gap: 4
+  },
+  row: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: SPACING.xs
   },
   historyTitle: {
       fontSize: TYPOGRAPHY.sizes.md,
@@ -186,5 +276,24 @@ const styles = StyleSheet.create({
       color: COLORS.darkGray,
       fontSize: TYPOGRAPHY.sizes.md,
       fontWeight: 'bold'
+  },
+  statsRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginTop: 4,
+      gap: SPACING.sm
+  },
+  statText: {
+      fontSize: TYPOGRAPHY.sizes.xs,
+      color: COLORS.darkGray
+  },
+  statValue: {
+      fontWeight: 'bold',
+      color: COLORS.text
+  },
+  statDivider: {
+      width: 1,
+      height: 12,
+      backgroundColor: COLORS.gray
   }
 });
