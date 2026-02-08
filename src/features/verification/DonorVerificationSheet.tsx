@@ -1,7 +1,7 @@
 
 import { CheckCircle, Scan, X } from 'lucide-react-native';
 import React, { useState } from 'react';
-import { ActivityIndicator, Alert, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Linking, Modal, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { COLORS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
 import { supabase } from '../../lib/supabase';
 import { QRCodeScanner } from './QRCodeScanner';
@@ -10,9 +10,10 @@ interface DonorVerificationSheetProps {
   donation: any;
   visible: boolean;
   onClose: () => void;
+  onVerifySuccess?: () => void;
 }
 
-export const DonorVerificationSheet = ({ donation, visible, onClose }: DonorVerificationSheetProps) => {
+export const DonorVerificationSheet = ({ donation, visible, onClose, onVerifySuccess }: DonorVerificationSheetProps) => {
   const [isScanning, setIsScanning] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -30,21 +31,58 @@ export const DonorVerificationSheet = ({ donation, visible, onClose }: DonorVeri
       }
 
       let newStatus = '';
+      let cancelReason = null;
+
       if (action === 'VERIFY_ARRIVAL' && donation.status === 'EN_ROUTE') {
         newStatus = 'ARRIVED';
       } else if (action === 'VERIFY_MATCH' && donation.status === 'ARRIVED') {
         newStatus = 'MATCHED';
+      } else if (action === 'VERIFY_MISMATCH' && donation.status === 'ARRIVED') {
+        newStatus = 'CANCELLED';
+        cancelReason = 'Cross-match Failed';
+      } else if (action === 'VERIFY_DONATION' && donation.status === 'MATCHED') {
+         newStatus = 'DONATED';
       } else {
         throw new Error("Invalid scan for current status");
       }
 
+      const updateData: any = { status: newStatus };
+      if (cancelReason) {
+          updateData.cancellation_reason = cancelReason;
+      }
+
       const { error } = await supabase
         .from('donations')
-        .update({ status: newStatus })
+        .update(updateData)
         .eq('id', donationId);
 
       if (error) throw error;
-      Alert.alert('Success', `Status updated to ${newStatus}`);
+
+      // Check for auto-fulfillment if donation completed
+      if (newStatus === 'DONATED' && donation.request_id) {
+          const { count } = await supabase
+            .from('donations')
+            .select('*', { count: 'exact', head: true })
+            .eq('request_id', donation.request_id)
+            .eq('status', 'DONATED');
+          
+           const { data: reqData } = await supabase
+            .from('requests')
+            .select('units_needed')
+            .eq('id', donation.request_id)
+            .single();
+
+           if (reqData && count && count >= reqData.units_needed) {
+               await supabase
+                .from('requests')
+                .update({ status: 'FULFILLED' })
+                .eq('id', donation.request_id);
+           }
+      }
+
+      Alert.alert('Success', `Status updated to ${newStatus}`, [
+          { text: 'OK', onPress: () => onVerifySuccess?.() }
+      ]);
 
     } catch (error: any) {
       Alert.alert('Error', error.message);
@@ -53,29 +91,78 @@ export const DonorVerificationSheet = ({ donation, visible, onClose }: DonorVeri
     }
   };
 
+  const openMaps = () => {
+      const scheme = Platform.select({ ios: 'maps:', android: 'geo:' });
+      let lat = 0;
+      let lng = 0;
+
+      if (donation.request?.location) {
+        // Try to parse POINT(lng lat)
+        const matches = donation.request.location.match(/POINT\(([^ ]+) ([^ ]+)\)/);
+        if (matches) {
+            lng = parseFloat(matches[1]);
+            lat = parseFloat(matches[2]);
+        }
+      }
+      
+      const label = donation.request?.hospital_name || 'Hospital';
+      const url = Platform.select({
+        ios: `${scheme}?q=${label}&ll=${lat},${lng}`,
+        android: `${scheme}0,0?q=${lat},${lng}(${label})`
+      });
+
+      if (url) {
+          Linking.openURL(url);
+      }
+  };
+
   const renderAction = () => {
     if (loading) return <ActivityIndicator color={COLORS.primary} />;
 
     switch (donation.status) {
       case 'EN_ROUTE':
         return (
-          <TouchableOpacity style={styles.actionButton} onPress={() => setIsScanning(true)}>
-            <Scan color={COLORS.white} size={24} />
-            <Text style={styles.actionText}>SCAN ARRIVAL QR</Text>
-          </TouchableOpacity>
+          <View style={styles.actionContainer}>
+            <TouchableOpacity style={styles.actionButton} onPress={() => setIsScanning(true)}>
+                <Scan color={COLORS.white} size={24} />
+                <Text style={styles.actionText}>SCAN ARRIVAL QR</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity style={[styles.actionButton, styles.secondaryButton]} onPress={openMaps}>
+                <Text style={[styles.actionText, styles.secondaryButtonText]}>NAVIGATE TO HOSPITAL</Text>
+            </TouchableOpacity>
+          </View>
         );
       case 'ARRIVED':
         return (
-          <TouchableOpacity style={styles.actionButton} onPress={() => setIsScanning(true)}>
-            <Scan color={COLORS.white} size={24} />
-            <Text style={styles.actionText}>SCAN MATCH QR</Text>
-          </TouchableOpacity>
+          <View style={styles.actionContainer}>
+            <TouchableOpacity style={styles.actionButton} onPress={() => setIsScanning(true)}>
+                <Scan color={COLORS.white} size={24} />
+                <Text style={styles.actionText}>SCAN MATCH SUCCESS</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+                style={[styles.actionButton, { backgroundColor: COLORS.error }]} 
+                onPress={() => setIsScanning(true)}
+            >
+                <X color={COLORS.white} size={24} />
+                <Text style={styles.actionText}>SCAN MATCH FAILED</Text>
+            </TouchableOpacity>
+          </View>
         );
       case 'MATCHED':
         return (
             <View style={styles.center}>
                 <Text style={styles.statusText}>Proceed to Transfusion</Text>
                 <Text style={styles.hint}>Wait for hospital staff to complete the procedure.</Text>
+                
+                <TouchableOpacity 
+                    style={[styles.actionButton, { marginTop: SPACING.lg, backgroundColor: COLORS.success }]} 
+                    onPress={() => setIsScanning(true)}
+                >
+                    <CheckCircle color={COLORS.white} size={24} />
+                    <Text style={styles.actionText}>SCAN DONATION COMPLETE</Text>
+                </TouchableOpacity>
             </View>
         );
        case 'DONATED':
@@ -141,6 +228,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: SPACING.lg,
   },
+  actionContainer: {
+      gap: SPACING.md,
+      width: '100%',
+      alignItems: 'center'
+  },
+  secondaryButton: {
+      backgroundColor: COLORS.white,
+      borderWidth: 2,
+      borderColor: COLORS.primary
+  },
+  secondaryButtonText: {
+      color: COLORS.primary
+  },
   title: {
     fontSize: TYPOGRAPHY.sizes.xl,
     fontWeight: 'bold',
@@ -187,6 +287,7 @@ const styles = StyleSheet.create({
   hint: {
     fontSize: TYPOGRAPHY.sizes.sm,
     color: COLORS.darkGray,
-    marginTop: SPACING.sm
+    marginTop: SPACING.sm,
+    textAlign: 'center'
   }
 });
