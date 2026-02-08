@@ -1,8 +1,8 @@
-
 import { QueryClientProvider } from '@tanstack/react-query';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { useEffect } from 'react';
 import { ActivityIndicator, View } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { COLORS } from '../src/constants/theme';
 import { AuthProvider, useAuth } from '../src/context/AuthProvider';
 import { queryClient } from '../src/lib/react-query';
@@ -46,7 +46,9 @@ export default function RootLayout() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <InitialLayout />
+        <SafeAreaProvider>
+          <InitialLayout />
+        </SafeAreaProvider>
       </AuthProvider>
     </QueryClientProvider>
   );
