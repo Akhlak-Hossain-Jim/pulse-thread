@@ -80,3 +80,7 @@ as $$
   )
   and is_donor_active = true;
 $$;
+
+-- Enable Realtime
+alter publication supabase_realtime add table requests;
+alter publication supabase_realtime add table donations;
