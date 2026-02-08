@@ -34,7 +34,12 @@ export default function RequestsScreen() {
       if (error) {
         console.error('Error fetching requests:', error);
       } else {
-        setRequests(data || []);
+        // Filter out requests that have enough active donors
+        const filtered = (data || []).filter((req: any) => {
+             const activeDonations = req.donations?.filter((d: any) => d.status !== 'CANCELLED') || [];
+             return activeDonations.length < req.units_needed;
+        });
+        setRequests(filtered);
       }
     } catch (e) {
       console.error('Exception fetching requests:', e);
