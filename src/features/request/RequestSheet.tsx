@@ -245,6 +245,7 @@ export const RequestSheet = ({ visible, onClose, onPickLocation, selectedLocatio
                 value={units}
                 onChangeText={setUnits}
                 keyboardType="numeric"
+                placeholderTextColor={COLORS.darkGray}
                 />
 
                 <Text style={styles.label}>Urgency Level</Text>
@@ -287,6 +288,7 @@ export const RequestSheet = ({ visible, onClose, onPickLocation, selectedLocatio
                     value={hospital}
                     onChangeText={searchPlaces}
                     placeholder="Search hospital or place..."
+                    placeholderTextColor={COLORS.darkGray}
                     onFocus={() => {
                         if (hospital.length > 2) setShowPredictions(true);
                     }}

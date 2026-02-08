@@ -52,6 +52,7 @@ export default function LandingPage() {
         <TextInput
           style={styles.input}
           placeholder="Email"
+          placeholderTextColor={COLORS.darkGray}
           value={email}
           onChangeText={setEmail}
           autoCapitalize="none"
@@ -60,6 +61,7 @@ export default function LandingPage() {
         <TextInput
           style={styles.input}
           placeholder="Password"
+          placeholderTextColor={COLORS.darkGray}
           value={password}
           onChangeText={setPassword}
           secureTextEntry

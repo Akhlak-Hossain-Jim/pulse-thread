@@ -111,6 +111,7 @@ export default function ProfileScreen() {
                             value={fullName}
                             onChangeText={setFullName}
                             placeholder="John Doe"
+                            placeholderTextColor={COLORS.darkGray}
                         />
                     </View>
 
@@ -121,6 +122,7 @@ export default function ProfileScreen() {
                             value={phone}
                             onChangeText={setPhone}
                             placeholder="+1 234 567 890"
+                            placeholderTextColor={COLORS.darkGray}
                             keyboardType="phone-pad"
                         />
                     </View>
@@ -132,6 +134,7 @@ export default function ProfileScreen() {
                             value={bloodType}
                             onChangeText={setBloodType}
                             placeholder="O+"
+                            placeholderTextColor={COLORS.darkGray}
                         />
                     </View>
 
