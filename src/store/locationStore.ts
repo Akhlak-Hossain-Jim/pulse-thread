@@ -1,5 +1,6 @@
 
 import * as Location from 'expo-location';
+import { Alert, Linking } from 'react-native';
 import { create } from 'zustand';
 
 type LocationState = {
@@ -17,31 +18,56 @@ export const useLocationStore = create<LocationState>((set) => ({
   setErrorMsg: (errorMsg) => set({ errorMsg }),
   requestPermission: async () => {
     try {
-      // Create a promise that rejects after 5 seconds to force fallback
+      console.log("Checking if location services are enabled...");
+      const enabled = await Location.hasServicesEnabledAsync();
+      console.log("Location Services Enabled:", enabled);
+      if (!enabled) {
+          Alert.alert(
+              "Location Disabled", 
+              "Please enable location services to use this feature.",
+              [
+                  { text: "Cancel", style: "cancel" },
+                  { text: "Open Settings", onPress: () => Linking.openSettings() }
+              ]
+          );
+          // throw new Error('Location services disabled'); 
+          // Don't throw immediately, maybe they enable it?
+      }
+
+      console.log("Requesting foreground permissions...");
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      console.log("Permission status:", status);
+      
+      if (status !== 'granted') {
+          Alert.alert(
+              "Permission Denied",
+              "We need your location to find nearby donors. Please enable it in settings.",
+              [
+                  { text: "Cancel", style: "cancel" },
+                  { text: "Open Settings", onPress: () => Linking.openSettings() }
+              ]
+          );
+        throw new Error('Permission denied');
+      }
+
+      // Race condition with timeout for location fetching
+      const locationPromise = Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+
       const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error("Location request timed out")), 5000)
+        setTimeout(() => reject(new Error('Location request timed out')), 5000)
       );
 
-      // The actual work: Permission + Fetch
-      const workPromise = (async () => {
-        let { status } = await Location.requestForegroundPermissionsAsync();
-        if (status !== 'granted') {
-          throw new Error('Permission denied');
-        }
-
-        let lastKnown = await Location.getLastKnownPositionAsync({});
-        if (lastKnown) return lastKnown;
-
-        return await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
-        });
-      })();
-
-      // Race work against timeout
-      const result = await Promise.race([workPromise, timeoutPromise]);
+      let location: any = await Promise.race([locationPromise, timeoutPromise]);
       
-      if (result) {
-        set({ location: result as Location.LocationObject });
+      if (!location) {
+        // Fallback to last known if current fails/times out (though race handles timeout error)
+        location = await Location.getLastKnownPositionAsync({});
+      }
+      
+      if (location) {
+        set({ location });
       }
 
     } catch (error: any) {
