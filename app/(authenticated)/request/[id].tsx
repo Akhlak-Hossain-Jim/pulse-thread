@@ -1,10 +1,11 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ArrowLeft, Clock, HeartHandshake, MapPin, Navigation, Phone, User as UserIcon } from 'lucide-react-native';
+import { ArrowLeft, CheckCircle, Clock, HeartHandshake, MapPin, Navigation, Phone, QrCode, User as UserIcon } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { COLORS, SHADOWS, SPACING, TYPOGRAPHY } from '../../../src/constants/theme';
 import { useAuth } from '../../../src/context/AuthProvider';
 import { AcceptSheet } from '../../../src/features/donor/AcceptSheet';
+import { RequesterVerificationSheet } from '../../../src/features/verification/RequesterVerificationSheet';
 import { supabase } from '../../../src/lib/supabase';
 
 export default function RequestDetailsScreen() {
@@ -23,6 +24,7 @@ export default function RequestDetailsScreen() {
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
   const [cancelling, setCancelling] = useState(false);
+  const [isVerificationVisible, setIsVerificationVisible] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -189,25 +191,7 @@ export default function RequestDetailsScreen() {
                 </View>
             )}
 
-            {/* Role-Based Actions */}
-            {isRequester ? (
-                <View style={styles.requesterInfo}>
-                   <Text style={{ color: COLORS.darkGray, fontStyle: 'italic'}}>You requested this.</Text>
-                </View>
-            ) : isActiveDonor ? (
-                <TouchableOpacity 
-                    style={[styles.helpButton, { backgroundColor: COLORS.action }]} 
-                    onPress={() => router.push('/(authenticated)/map')}
-                >
-                    <Navigation size={20} color={COLORS.white} />
-                    <Text style={styles.helpButtonText}>NAVIGATE TO HOSPITAL</Text>
-                </TouchableOpacity>
-            ) : (
-                <TouchableOpacity style={styles.helpButton} onPress={handleHelp}>
-                    <HeartHandshake size={20} color={COLORS.white} />
-                    <Text style={styles.helpButtonText}>I CAN HELP</Text>
-                </TouchableOpacity>
-            )}
+            {/* Role-Based Actions - MOVED TO FOOTER */}
         </View>
 
         {/* Responses Section - Only for Requester or maybe showing count for others */}
@@ -276,6 +260,50 @@ export default function RequestDetailsScreen() {
 
       </ScrollView>
 
+      {/* Main Action Button Footer */}
+      {!loading && (
+        <View style={styles.footer}>
+          {isActiveDonor ? (
+            <TouchableOpacity 
+                style={[styles.actionButton, styles.activeDonorButton]}
+                onPress={() => router.push('/(authenticated)/map')}
+            >
+                <Navigation color={COLORS.white} size={24} />
+                <Text style={styles.actionButtonText}>NAVIGATE TO HOSPITAL</Text>
+            </TouchableOpacity>
+          ) : isRequester ? (
+             request?.status === 'FULFILLED' ? (
+                <View style={[styles.actionButton, { backgroundColor: COLORS.success, opacity: 0.8 }]}>
+                    <CheckCircle color={COLORS.white} size={24} />
+                    <Text style={styles.actionButtonText}>REQUEST FULFILLED</Text>
+                </View>
+             ) : (
+                <TouchableOpacity 
+                    style={styles.actionButton}
+                    onPress={() => setIsVerificationVisible(true)}
+                >
+                    <QrCode color={COLORS.white} size={24} />
+                    <Text style={styles.actionButtonText}>VIEW VERIFICATION QR</Text>
+                </TouchableOpacity>
+             )
+          ) : (
+             request?.status === 'FULFILLED' ? (
+                <View style={[styles.actionButton, { backgroundColor: COLORS.success, opacity: 0.8 }]}>
+                    <Text style={styles.actionButtonText}>REQUEST FULFILLED</Text>
+                </View>
+             ) : (
+                <TouchableOpacity 
+                    style={styles.actionButton}
+                    onPress={handleHelp}
+                >
+                    <HeartHandshake color={COLORS.white} size={24} />
+                    <Text style={styles.actionButtonText}>I CAN HELP</Text>
+                </TouchableOpacity>
+            )
+          )}
+        </View>
+      )}
+
       <AcceptSheet
         visible={showAcceptSheet}
         request={request}
@@ -285,6 +313,15 @@ export default function RequestDetailsScreen() {
             router.push('/(authenticated)/map');
         }}
       />
+      
+      {/* Verification Sheet for Requester */}
+      {isRequester && request && (
+          <RequesterVerificationSheet
+              visible={isVerificationVisible}
+              requestId={request.id}
+              onClose={() => setIsVerificationVisible(false)}
+          />
+      )}
 
       {/* Cancellation Modal */}
       <Modal
@@ -301,6 +338,7 @@ export default function RequestDetailsScreen() {
                   <TextInput
                     style={styles.reasonInput}
                     placeholder="Reason (e.g., Car trouble, Emergency...)"
+                    placeholderTextColor={COLORS.darkGray}
                     value={cancelReason}
                     onChangeText={setCancelReason}
                     multiline
@@ -617,5 +655,33 @@ const styles = StyleSheet.create({
   modalButtonTextDestructive: {
       color: COLORS.white,
       fontWeight: 'bold'
+  },
+  footer: {
+      position: 'absolute',
+      bottom: 0,
+      left: 0,
+      right: 0,
+      backgroundColor: COLORS.white,
+      padding: SPACING.lg,
+      borderTopWidth: 1,
+      borderTopColor: COLORS.gray
+  },
+  actionButton: {
+      backgroundColor: COLORS.primary,
+      borderRadius: SPACING.md,
+      paddingVertical: SPACING.md,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: SPACING.sm,
+      ...SHADOWS.button
+  },
+  activeDonorButton: {
+      backgroundColor: COLORS.action
+  },
+  actionButtonText: {
+      color: COLORS.white,
+      fontWeight: 'bold',
+      fontSize: TYPOGRAPHY.sizes.md
   }
 });
