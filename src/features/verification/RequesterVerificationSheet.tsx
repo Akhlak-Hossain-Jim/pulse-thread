@@ -225,7 +225,7 @@ export const RequesterVerificationSheet = ({ requestId, visible, onClose }: Requ
                         ListEmptyComponent={
                             <View style={styles.emptyState}>
                                 <Clock size={48} color={COLORS.gray} />
-                                <Text style={styles.emptyText}>No active donations yet.</Text>
+                                <Text style={styles.emptyText}>No active Donor response yet.</Text>
                             </View>
                         }
                    />
