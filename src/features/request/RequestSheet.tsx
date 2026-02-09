@@ -121,14 +121,15 @@ export const RequestSheet = ({ visible, onClose, onPickLocation, selectedLocatio
 
     setLoading(true);
     try {
-      // 1. Ensure profile exists (Implicit Creation)
-      const { error: profileError } = await supabase.from('profiles').upsert({
-          id: session.user.id,
-          updated_at: new Date().toISOString(),
-      });
+      // 1. Ensure profile exists
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('id', session.user.id)
+        .single();
 
       if (profileError) {
-          console.error("Profile creation failed:", JSON.stringify(profileError, null, 2));
+          console.error("Profile check failed:", JSON.stringify(profileError, null, 2));
           PlatformAlert.alert(
             "Incomplete Profile",
             "You have not completed your profile. Please complete it to continue.",
