@@ -3,9 +3,11 @@ import { Stack, useRouter, useSegments } from 'expo-router';
 import { useEffect } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { WebOnboardingModal } from '../src/components/WebOnboardingModal';
 import { COLORS } from '../src/constants/theme';
 import { AuthProvider, useAuth } from '../src/context/AuthProvider';
 import { queryClient } from '../src/lib/react-query';
+
 
 function InitialLayout() {
   const { session, loading } = useAuth();
@@ -48,6 +50,8 @@ export default function RootLayout() {
       <AuthProvider>
         <SafeAreaProvider>
           <InitialLayout />
+          <WebOnboardingModal />
+
         </SafeAreaProvider>
       </AuthProvider>
     </QueryClientProvider>
