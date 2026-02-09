@@ -260,8 +260,6 @@ export const MapScreen = () => {
       }
   };
 
-
-
   const handlePickLocationStart = () => {
       setIsRequestSheetVisible(false);
       setIsPickingLocation(true);
