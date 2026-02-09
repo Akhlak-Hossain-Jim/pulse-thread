@@ -5,6 +5,7 @@ import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'rea
 import MapView, { Polyline, PROVIDER_GOOGLE, Region } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { ErrorBoundary } from '../../components/ErrorBoundary';
 import { MapMarker } from '../../components/MapMarker';
 import { COLORS, SPACING } from '../../constants/theme';
 import { useAuth } from '../../context/AuthProvider';
@@ -29,6 +30,7 @@ export const MapScreen = () => {
   const [isDonorActionsVisible, setIsDonorActionsVisible] = useState(false);
   const [isPickingLocation, setIsPickingLocation] = useState(false);
   const [pickupCoords, setPickupCoords] = useState<any>(null);
+  const [dataError, setDataError] = useState<string | null>(null);
 
   
   const GOOGLE_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_ANDROID;
@@ -188,6 +190,22 @@ export const MapScreen = () => {
       // Filter out requests that have enough active donors
       const filtered = (data || []).filter((req: any) => {
              const activeDonations = req.donations?.filter((d: any) => d.status !== 'CANCELLED') || [];
+             
+             // Data Integrity Check
+             if (req.location) {
+                const matches = req.location.match(/POINT\(([^ ]+) ([^ ]+)\)/);
+                if (matches) {
+                    const lon = parseFloat(matches[1]);
+                    const lat = parseFloat(matches[2]);
+                    if (isNaN(lon) || isNaN(lat)) {
+                         const msg = `Invalid coordinates for request ${req.id}: ${req.location}`;
+                         console.error(msg);
+                         setDataError(msg); 
+                         return false; // exclude from map
+                    }
+                }
+             }
+
              return activeDonations.length < req.units_needed;
       });
       setRequests(filtered);
@@ -295,152 +313,175 @@ export const MapScreen = () => {
   };
 
   return (
-    <View style={styles.container}>
-      <MapView
-        provider={PROVIDER_GOOGLE}
-        style={styles.map}
-        initialRegion={initialRegion}
-        showsUserLocation
-        showsMyLocationButton
-        onRegionChange={handleRegionChange}
-        onRegionChangeComplete={handleRegionChangeComplete}
-      >
-        {/* Render Requests (Hide when picking) */}
-        {!isPickingLocation && requests.map((req) => {
-             if (!req.location) return null;
-             const matches = req.location.match(/POINT\(([^ ]+) ([^ ]+)\)/);
-             if (!matches) return null;
-             const longitude = parseFloat(matches[1]);
-             const latitude = parseFloat(matches[2]);
-
-             // Don't show my own requests as "Donor targets"
-             if (req.requester_id === session?.user.id) return null;
-
-             return (
-                <MapMarker
-                    key={req.id}
-                    coordinate={{ latitude, longitude }}
-                    type="request"
-                    title={`${req.blood_type} Needed`}
-                    description={req.hospital_name}
-                    onPress={() => setSelectedRequest(req)}
-                />
-             );
-        })}
-
-        {/* User Marker */}
-        <MapMarker 
-            coordinate={{ 
-                latitude: location.coords.latitude, 
-                longitude: location.coords.longitude 
-            }} 
-            type="user" 
-        />
-
-        {/* Route Polyline */}
-        {routeCoords.length > 0 && (
-            <Polyline
-                coordinates={routeCoords}
-                strokeColor={COLORS.primary}
-                strokeWidth={4}
-            />
-        )}
-      </MapView>
-
-      {/* Center Pin for Picking */}
-      {isPickingLocation && (
-          <View style={styles.centerPinContainer} pointerEvents="none">
-              <MapMarker 
-                type="request" // Re-use the droplet/pulse marker as the pin
-                coordinate={{ latitude: 0, longitude: 0 }} // Dummy, handled by absolute center View
-              />
-          </View>
-      )}
-
-      {/* Confirm Button for Picking */}
-      {isPickingLocation && (
-        <View style={styles.pickerOverlay}>
-            <Text style={styles.pickerInstruction}>
-                {pickupCoords?.address || "Move map to location"}
-            </Text>
-            <TouchableOpacity style={styles.confirmButton} onPress={handlePickLocationConfirm}>
-                <Text style={styles.confirmButtonText}>CONFIRM LOCATION</Text>
-            </TouchableOpacity>
-        </View> 
-      )}
-      
-      {!isPickingLocation && (
-        <TouchableOpacity 
-            style={styles.requestButton}
-            onPress={() => setIsRequestSheetVisible(true)}
+    <ErrorBoundary onReset={() => requestPermission()}>
+        <View style={styles.container}>
+        <MapView
+            provider={PROVIDER_GOOGLE}
+            style={styles.map}
+            initialRegion={initialRegion}
+            showsUserLocation
+            showsMyLocationButton
+            onRegionChange={handleRegionChange}
+            onRegionChangeComplete={handleRegionChangeComplete}
         >
-            <Plus color={COLORS.white} size={24} />
-            <Text style={styles.requestButtonText}>REQUEST BLOOD</Text>
-        </TouchableOpacity>
-      )}
+            {/* Render Requests (Hide when picking) */}
+            {!isPickingLocation && requests.map((req) => {
+                if (!req.location) return null;
+                const matches = req.location.match(/POINT\(([^ ]+) ([^ ]+)\)/);
+                if (!matches) return null;
+                const longitude = parseFloat(matches[1]);
+                const latitude = parseFloat(matches[2]);
 
-      {/* Floating Status Buttons Container */}
-      {!isPickingLocation && (
-          <View style={[styles.floatingButtonContainer, { top: insets.top + SPACING.lg }]}>
-            {myActiveRequest && (
-                <TouchableOpacity 
-                    style={[styles.floatingButton, styles.requesterButton]}
-                    onPress={() => setIsVerificationVisible(true)}
-                >
-                    <Activity color={COLORS.white} size={24} />
-                    <Text style={styles.requestButtonText}>MY REQUEST</Text>
-                </TouchableOpacity>
+                if (isNaN(longitude) || isNaN(latitude)) {
+                    console.error(`Invalid coordinates for request ${req.id}: ${req.location}`);
+                    return null;
+                }
+
+                // Don't show my own requests as "Donor targets"
+                if (req.requester_id === session?.user.id) return null;
+
+                return (
+                    <MapMarker
+                        key={req.id}
+                        coordinate={{ latitude, longitude }}
+                        type="request"
+                        title={`${req.blood_type} Needed`}
+                        description={req.hospital_name}
+                        onPress={() => setSelectedRequest(req)}
+                    />
+                );
+            })}
+
+            {/* User Marker */}
+            <MapMarker 
+                coordinate={{ 
+                    latitude: location.coords.latitude, 
+                    longitude: location.coords.longitude 
+                }} 
+                type="user" 
+            />
+
+            {/* Route Polyline */}
+            {routeCoords.length > 0 && (
+                <Polyline
+                    coordinates={routeCoords}
+                    strokeColor={COLORS.primary}
+                    strokeWidth={4}
+                />
             )}
+        </MapView>
 
-            {myActiveDonation && (
-                <TouchableOpacity 
-                    style={[styles.floatingButton, styles.donorButton]}
-                    onPress={() => setIsDonorActionsVisible(true)}
-                >
-                    <Navigation color={COLORS.white} size={24} />
-                    <Text style={styles.requestButtonText}>DONATION ACTIVE</Text>
+        {/* Center Pin for Picking */}
+        {isPickingLocation && (
+            <View style={styles.centerPinContainer} pointerEvents="none">
+                <MapMarker 
+                    type="request" // Re-use the droplet/pulse marker as the pin
+                    coordinate={{ latitude: 0, longitude: 0 }} // Dummy, handled by absolute center View
+                />
+            </View>
+        )}
+
+        {/* Confirm Button for Picking */}
+        {isPickingLocation && (
+            <View style={styles.pickerOverlay}>
+                <Text style={styles.pickerInstruction}>
+                    {pickupCoords?.address || "Move map to location"}
+                </Text>
+                <TouchableOpacity style={styles.confirmButton} onPress={handlePickLocationConfirm}>
+                    <Text style={styles.confirmButtonText}>CONFIRM LOCATION</Text>
                 </TouchableOpacity>
-            )}
-          </View>
-      )}
+            </View> 
+        )}
+        
+        {!isPickingLocation && (
+            <TouchableOpacity 
+                style={styles.requestButton}
+                onPress={() => setIsRequestSheetVisible(true)}
+            >
+                <Plus color={COLORS.white} size={24} />
+                <Text style={styles.requestButtonText}>REQUEST BLOOD</Text>
+            </TouchableOpacity>
+        )}
 
-      <RequestSheet 
-        visible={isRequestSheetVisible} 
-        onClose={() => setIsRequestSheetVisible(false)}
-        onPickLocation={handlePickLocationStart}
-        selectedLocation={pickupCoords}
-      />
+        {/* Floating Status Buttons Container */}
+        {!isPickingLocation && (
+            <View style={[styles.floatingButtonContainer, { top: insets.top + SPACING.lg }]}>
+                {myActiveRequest && (
+                    <TouchableOpacity 
+                        style={[styles.floatingButton, styles.requesterButton]}
+                        onPress={() => setIsVerificationVisible(true)}
+                    >
+                        <Activity color={COLORS.white} size={24} />
+                        <Text style={styles.requestButtonText}>MY REQUEST</Text>
+                    </TouchableOpacity>
+                )}
 
-      <AcceptSheet
-        visible={!!selectedRequest}
-        request={selectedRequest}
-        onClose={() => {
-            setSelectedRequest(null);
-            fetchMyActiveState(); // Refresh state after acceptance
-        }}
-      />
+                {myActiveDonation && (
+                    <TouchableOpacity 
+                        style={[styles.floatingButton, styles.donorButton]}
+                        onPress={() => setIsDonorActionsVisible(true)}
+                    >
+                        <Navigation color={COLORS.white} size={24} />
+                        <Text style={styles.requestButtonText}>DONATION ACTIVE</Text>
+                    </TouchableOpacity>
+                )}
+            </View>
+        )}
 
-      {myActiveRequest && (
-        <RequesterVerificationSheet
-            visible={isVerificationVisible}
-            requestId={myActiveRequest.id}
-            onClose={() => setIsVerificationVisible(false)}
+        <RequestSheet 
+            visible={isRequestSheetVisible} 
+            onClose={() => setIsRequestSheetVisible(false)}
+            onPickLocation={handlePickLocationStart}
+            selectedLocation={pickupCoords}
         />
-      )}
 
-      {myActiveDonation && (
-        <DonorVerificationSheet
-            visible={isDonorActionsVisible}
-            donation={myActiveDonation}
-            onClose={() => setIsDonorActionsVisible(false)}
-            onVerifySuccess={() => {
-                fetchMyActiveState();
-                // Optionally close the sheet or keep it open to show next step
-                 // setIsDonorActionsVisible(false); 
+        <AcceptSheet
+            visible={!!selectedRequest}
+            request={selectedRequest}
+            onClose={() => {
+                setSelectedRequest(null);
+                fetchMyActiveState(); // Refresh state after acceptance
             }}
         />
-      )}
-    </View>
+
+        {myActiveRequest && (
+            <RequesterVerificationSheet
+                visible={isVerificationVisible}
+                requestId={myActiveRequest.id}
+                onClose={() => setIsVerificationVisible(false)}
+            />
+        )}
+
+        {myActiveDonation && (
+            <DonorVerificationSheet
+                visible={isDonorActionsVisible}
+                donation={myActiveDonation}
+                onClose={() => setIsDonorActionsVisible(false)}
+                onVerifySuccess={() => {
+                    fetchMyActiveState();
+                    // Optionally close the sheet or keep it open to show next step
+                    // setIsDonorActionsVisible(false); 
+                }}
+            />
+        )}
+
+        {/* Data Error Modal */ }
+        {dataError && (
+            <View style={styles.errorModalOverlay}>
+                <View style={styles.errorModalBox}>
+                    <Text style={styles.errorModalTitle}>Data Error Detected</Text>
+                    <Text style={styles.errorModalText}>{dataError}</Text>
+                    <TouchableOpacity 
+                        style={styles.errorModalButton}
+                        onPress={() => setDataError(null)}
+                    >
+                        <Text style={styles.errorModalButtonText}>Dismiss</Text>
+                    </TouchableOpacity>
+                </View>
+            </View>
+        )}
+        </View>
+    </ErrorBoundary>
   );
 };
 
@@ -558,6 +599,44 @@ const styles = StyleSheet.create({
   },
   donorButton: {
     backgroundColor: COLORS.success,
+  },
+  errorModalOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 999,
+  },
+  errorModalBox: {
+    width: '85%',
+    backgroundColor: COLORS.white,
+    padding: SPACING.xl,
+    borderRadius: 16,
+    alignItems: 'center',
+    elevation: 5,
+  },
+  errorModalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: COLORS.error,
+    marginBottom: SPACING.md,
+  },
+  errorModalText: {
+    fontSize: 14,
+    color: COLORS.text,
+    textAlign: 'center',
+    marginBottom: SPACING.lg,
+    fontFamily: 'monospace',
+  },
+  errorModalButton: {
+    backgroundColor: COLORS.primary,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.xl,
+    borderRadius: 8,
+  },
+  errorModalButtonText: {
+    color: COLORS.white,
+    fontWeight: 'bold',
   },
 });
 
