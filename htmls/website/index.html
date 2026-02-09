@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PulseThread - The Uber for Blood</title>
+    <meta name="description"
+        content="Real-Time Blood Donation Logistics Platform. Connect requestors with verified donors nearby.">
+    <meta name="keywords"
+        content="blood donation, real-time blood donor, donate blood, volunteer blood donation, emergency blood request, dhaka blood donation">
+    <meta name="author" content="Akhlak Hossain Jim">
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://pulsethread.app/">
+    <meta property="og:title" content="PulseThread - The Uber for Blood">
+    <meta property="og:description"
+        content="Real-Time Blood Donation Logistics Platform. Connect requestors with verified donors nearby.">
+    <meta property="og:image" content="assets/social.png">
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image">
+    <meta property="twitter:url" content="https://pulsethread.app/">
+    <meta property="twitter:title" content="PulseThread - The Uber for Blood">
+    <meta property="twitter:description"
+        content="Real-Time Blood Donation Logistics Platform. Connect requestors with verified donors nearby.">
+    <meta property="twitter:image" content="assets/social.png">
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="assets/favicon.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            red: '#E11D48', // Rose 600
+                            dark: '#0F172A', // Slate 900
+                            light: '#F8FAFC', // Slate 50
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+
+        .hero-bg {
+            background-color: #ffffff;
+            background-image: radial-gradient(at 0% 0%, hsla(344, 100%, 92%, 1) 0, transparent 50%),
+                radial-gradient(at 50% 0%, hsla(344, 100%, 96%, 1) 0, transparent 50%),
+                radial-gradient(at 100% 0%, hsla(344, 100%, 92%, 1) 0, transparent 50%);
+            animation: pulse-bg 8s ease-in-out infinite alternate;
+        }
+
+        @keyframes pulse-bg {
+            0% {
+                background-position: 0% 50%;
+            }
+
+            100% {
+                background-position: 100% 50%;
+            }
+
+            /* Slight movement simulation via gradient shift if using linear, but for radial we can just shift opacity or size if needed, simple static mesh is also good. Let's stick to the static mesh above as it's cleaner, or adding a soft float. */
+        }
+
+        .animate-fade-in-up {
+            animation: fadeInUp 0.8s ease-out forwards;
+            opacity: 0;
+            transform: translateY(20px);
+        }
+
+        .delay-100 {
+            animation-delay: 0.1s;
+        }
+
+        .delay-200 {
+            animation-delay: 0.2s;
+        }
+
+        .delay-300 {
+            animation-delay: 0.3s;
+        }
+
+        @keyframes fadeInUp {
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+    </style>
+</head>
+
+<body class="bg-brand-light text-slate-800 antialiased">
+
+    <!-- Header -->
+    <header class="bg-white/80 backdrop-blur-md sticky top-0 z-50 border-b border-slate-100">
+        <nav class="container mx-auto px-6 py-4">
+            <div class="flex items-center justify-between">
+                <a href="index.html" class="flex items-center gap-2">
+                    <img src="assets/logo.svg" alt="PulseThread" class="h-10 w-auto">
+                </a>
+
+                <!-- Desktop Menu -->
+                <div class="hidden md:flex items-center space-x-8">
+                    <a href="index.html" class="text-brand-dark font-bold hover:text-brand-red transition">Home</a>
+                    <a href="about.html" class="text-slate-600 hover:text-brand-red font-medium transition">About</a>
+                    <a href="https://github.com/Akhlak-Hossain-Jim/pulse-thread" target="_blank"
+                        class="text-slate-600 hover:text-brand-red font-medium transition">GitHub</a>
+                    <a href="https://buymeacoffee.com/ahjim" target="_blank"
+                        class="px-5 py-2 bg-brand-red text-white rounded-full hover:bg-rose-700 transition font-medium shadow-lg shadow-rose-500/30">Donate</a>
+                </div>
+
+                <!-- Mobile Menu Button -->
+                <div class="md:hidden">
+                    <button id="mobile-menu-btn" class="text-slate-600 hover:text-brand-red focus:outline-none">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M4 6h16M4 12h16M4 18h16"></path>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Mobile Menu Panel -->
+            <div id="mobile-menu" class="hidden md:hidden mt-4 pb-4 border-t border-slate-100">
+                <div class="flex flex-col space-y-4 pt-4">
+                    <a href="index.html" class="text-brand-dark font-bold text-center">Home</a>
+                    <a href="about.html" class="text-slate-600 font-medium text-center">About</a>
+                    <a href="https://github.com/Akhlak-Hossain-Jim/pulse-thread" target="_blank"
+                        class="text-slate-600 font-medium text-center">GitHub</a>
+                    <a href="https://buymeacoffee.com/ahjim" target="_blank"
+                        class="mx-auto w-full max-w-xs px-4 py-2 bg-brand-red text-white rounded-lg text-center">Donate</a>
+                </div>
+            </div>
+        </nav>
+    </header>
+
+    <!-- Hero Section -->
+    <section class="py-24 hero-bg">
+        <div class="container mx-auto px-6 text-center">
+            <div
+                class="inline-block px-4 py-1.5 mb-6 text-sm font-semibold tracking-wider text-brand-red uppercase bg-rose-100/80 backdrop-blur-sm rounded-full animate-fade-in-up">
+                Community Driven • Open Source • Non-Profit
+            </div>
+            <h1
+                class="text-5xl md:text-7xl font-extrabold text-brand-dark mb-8 leading-tight tracking-tight animate-fade-in-up delay-100">
+                This App Only Works<br>
+                <span class="text-transparent bg-clip-text bg-gradient-to-r from-brand-red to-rose-500">If You
+                    Join.</span>
+            </h1>
+            <p
+                class="text-xl md:text-2xl text-slate-600 mb-10 max-w-3xl mx-auto leading-relaxed animate-fade-in-up delay-200">
+                PulseThread is the <strong>"Uber for Blood"</strong>—but technology alone cannot save lives.
+                We need a network of heroes in every corner of the city.
+                <span class="font-semibold text-brand-dark block mt-4">Be the lifeline someone is praying for.</span>
+            </p>
+
+            <div class="flex flex-col sm:flex-row justify-center gap-4 mt-8 animate-fade-in-up delay-300">
+                <a href="https://forms.gle/ortGgg55PFbcuk5V8" target="_blank"
+                    class="group relative px-8 py-4 bg-brand-dark text-white rounded-xl hover:bg-slate-800 transition-all duration-300 shadow-xl shadow-brand-dark/20 hover:-translate-y-1 hover:shadow-2xl">
+                    <div class="flex items-center gap-3 font-bold text-lg">
+                        <span class="text-2xl group-hover:scale-110 transition-transform duration-300">🤖</span>
+                        <span>Req Early Access (Android)</span>
+                    </div>
+                </a>
+                <a href="https://forms.gle/AF46xcRqEB2AAtwg9" target="_blank"
+                    class="group relative px-8 py-4 bg-white/50 backdrop-blur-sm text-brand-dark border-2 border-brand-dark/10 rounded-xl hover:border-brand-dark hover:bg-white transition-all duration-300 shadow-xl shadow-slate-200/50 hover:-translate-y-1 hover:shadow-2xl">
+                    <div class="flex items-center gap-3 font-bold text-lg">
+                        <span class="text-2xl group-hover:scale-110 transition-transform duration-300">🍎</span>
+                        <span>Join Wishlist (iOS)</span>
+                    </div>
+                </a>
+            </div>
+
+            <p class="mt-8 text-sm text-slate-500 animate-fade-in-up delay-300">
+                Join 500+ early adopters waiting to make a difference.
+            </p>
+        </div>
+    </section>
+
+    <!-- The Problem / Why We Need You -->
+    <section class="py-20 bg-white">
+        <div class="container mx-auto px-6">
+            <div class="max-w-4xl mx-auto text-center mb-16">
+                <h2 class="text-3xl md:text-4xl font-bold text-brand-dark mb-6">Why Your Participation Matters</h2>
+                <p class="text-xl text-slate-600">
+                    Currently, finding blood involves calling 50+ people from outdated lists or posting on Facebook and
+                    hoping the algorithm shows it to the right person.
+                    <strong class="text-brand-red">This chaos costs lives.</strong>
+                </p>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-12 items-center">
+                <div class="bg-rose-50 p-8 rounded-3xl">
+                    <h3 class="text-2xl font-bold text-brand-dark mb-4">Without PulseThread</h3>
+                    <ul class="space-y-4">
+                        <li class="flex items-start gap-3">
+                            <span class="text-2xl">📢</span>
+                            <span class="text-slate-700">Panic-posting on social media, lost in the noise.</span>
+                        </li>
+                        <li class="flex items-start gap-3">
+                            <span class="text-2xl">📞</span>
+                            <span class="text-slate-700">Calling disconnected numbers from old databases.</span>
+                        </li>
+                        <li class="flex items-start gap-3">
+                            <span class="text-2xl">🚫</span>
+                            <span class="text-slate-700">Getting "ghosted" by donors who promise to come but never show
+                                up.</span>
+                        </li>
+                        <li class="flex items-start gap-3">
+                            <span class="text-2xl">💸</span>
+                            <span class="text-slate-700">Falling victim to scammers asking for travel money.</span>
+                        </li>
+                    </ul>
+                </div>
+                <div class="bg-brand-dark text-white p-8 rounded-3xl shadow-2xl relative overflow-hidden">
+                    <div
+                        class="absolute top-0 right-0 w-64 h-64 bg-brand-red opacity-10 rounded-full blur-3xl -mr-16 -mt-16">
+                    </div>
+                    <h3 class="text-2xl font-bold mb-4">With You on PulseThread</h3>
+                    <ul class="space-y-4 relative z-10">
+                        <li class="flex items-start gap-3">
+                            <span class="text-2xl">⚡</span>
+                            <span class="text-slate-300"><strong>Instant Matching:</strong> We alert only eligible
+                                donors who are actually nearby.</span>
+                        </li>
+                        <li class="flex items-start gap-3">
+                            <span class="text-2xl">📍</span>
+                            <span class="text-slate-300"><strong>Live Tracking:</strong> Watch your donor travel to the
+                                hospital on a map. No more guessing.</span>
+                        </li>
+                        <li class="flex items-start gap-3">
+                            <span class="text-2xl">🤝</span>
+                            <span class="text-slate-300"><strong>Verified Trust:</strong> Our "Triple Handshake" QR
+                                system ensures the donor is real and present.</span>
+                        </li>
+                        <li class="flex items-start gap-3">
+                            <span class="text-2xl">🏆</span>
+                            <span class="text-slate-300"><strong>Recognition:</strong> Your contributions are logged and
+                                celebrated. You solve the crisis.</span>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- How It Works -->
+    <section class="py-20 bg-slate-50">
+        <div class="container mx-auto px-6">
+            <div class="text-center mb-16">
+                <h2 class="text-3xl md:text-4xl font-bold text-brand-dark mb-4">Robust Logistics, Simplified</h2>
+                <p class="text-lg text-slate-600">We handled the complex engineering so you can focus on saving lives.
+                </p>
+            </div>
+
+            <div class="grid md:grid-cols-3 gap-8">
+                <!-- Step 1 -->
+                <div class="bg-white p-8 rounded-2xl border border-slate-100 hover:shadow-lg transition">
+                    <div
+                        class="w-14 h-14 bg-rose-100 text-brand-red rounded-xl flex items-center justify-center text-2xl font-bold mb-6">
+                        1</div>
+                    <h3 class="text-xl font-bold text-brand-dark mb-3">Request in Seconds</h3>
+                    <p class="text-slate-600">
+                        Patients simply set the hospital location. Our PostGIS engine instantly calculates a radius and
+                        pings the nearest active donors.
+                    </p>
+                </div>
+                <!-- Step 2 -->
+                <div class="bg-white p-8 rounded-2xl border border-slate-100 hover:shadow-lg transition">
+                    <div
+                        class="w-14 h-14 bg-rose-100 text-brand-red rounded-xl flex items-center justify-center text-2xl font-bold mb-6">
+                        2</div>
+                    <h3 class="text-xl font-bold text-brand-dark mb-3">Accept & Navigate</h3>
+                    <p class="text-slate-600">
+                        Donors receive a push notification. Upon accepting, they get turn-by-turn navigation directly to
+                        the hospital entrance.
+                    </p>
+                </div>
+                <!-- Step 3 -->
+                <div class="bg-white p-8 rounded-2xl border border-slate-100 hover:shadow-lg transition">
+                    <div
+                        class="w-14 h-14 bg-rose-100 text-brand-red rounded-xl flex items-center justify-center text-2xl font-bold mb-6">
+                        3</div>
+                    <h3 class="text-xl font-bold text-brand-dark mb-3">Verify & Donate</h3>
+                    <p class="text-slate-600">
+                        The secure <strong>Triple Handshake</strong> (3 QR Scans) verifies arrival, medical suitability,
+                        and final donation. No fakes.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- CTA Section -->
+    <section class="py-24 bg-brand-dark relative overflow-hidden">
+        <div class="absolute inset-0 opacity-20 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]">
+        </div>
+        <div class="container mx-auto px-6 text-center relative z-10">
+            <h2 class="text-3xl md:text-5xl font-bold text-white mb-6">A Community of One is Weak.<br>A Community of
+                Many is Unstoppable.</h2>
+            <p class="text-xl text-slate-300 mb-10 max-w-2xl mx-auto">
+                PulseThread is free, open-source, and non-profit. It belongs to us. But it only works if we build the
+                network together.
+            </p>
+            <div class="flex flex-col sm:flex-row justify-center gap-4">
+                <a href="https://forms.gle/ortGgg55PFbcuk5V8" target="_blank"
+                    class="px-8 py-4 bg-brand-red text-white rounded-xl hover:bg-rose-600 transition font-bold text-lg shadow-lg shadow-rose-900/50">
+                    Join the Movement (Android)
+                </a>
+                <a href="https://forms.gle/AF46xcRqEB2AAtwg9" target="_blank"
+                    class="px-8 py-4 bg-transparent border-2 border-white text-white rounded-xl hover:bg-white hover:text-brand-dark transition font-bold text-lg">
+                    Join Wishlist (iOS)
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="bg-slate-900 text-slate-400 py-16 border-t border-slate-800">
+        <div class="container mx-auto px-6">
+            <div class="grid md:grid-cols-4 gap-12 mb-12">
+                <div class="col-span-1 md:col-span-2">
+                    <div class="flex items-center gap-2 mb-6">
+                        <img src="assets/logo.svg" alt="PulseThread" class="h-10 w-auto">
+                    </div>
+                    <p class="mb-6 max-w-md text-slate-400 leading-relaxed">
+                        An open-source initiative to solve the logistics of blood donation. Built with modern tech,
+                        powered by community trust.
+                    </p>
+                    <div class="flex gap-4">
+                        <!-- Facebook -->
+                        <a href="https://facebook.com/pulsethread.akhlak" target="_blank"
+                            class="text-white hover:text-brand-red transition">
+                            <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                                <path
+                                    d="M9 8h-3v4h3v12h5v-12h3.642l.358-4h-4v-1.667c0-.955.192-1.333 1.115-1.333h2.885v-5h-3.808c-3.196 0-5.192 1.583-5.192 4.615v3.385z" />
+                            </svg>
+                        </a>
+                        <!-- LinkedIn -->
+                        <a href="https://www.linkedin.com/company/pulsethread/" target="_blank"
+                            class="text-white hover:text-brand-red transition">
+                            <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                                <path
+                                    d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14m-.5 15.5v-5.3a3.26 3.26 0 0 0-3.26-3.26c-.85 0-1.84.52-2.32 1.3v-1.11h-2.79v8.37h2.79v-4.93c0-.77.62-1.4 1.39-1.4a1.4 1.4 0 0 1 1.4 1.4v4.93h2.79M6.88 8.56a1.68 1.68 0 0 0 1.68-1.68c0-.93-.75-1.69-1.68-1.69a1.69 1.69 0 0 0-1.69 1.69c0 .93.76 1.68 1.69 1.68m1.39 9.94v-8.37H5.5v8.37h2.77z" />
+                            </svg>
+                        </a>
+                        <!-- Instagram -->
+                        <a href="https://instagram.com/pulsethread.akhlak" target="_blank"
+                            class="text-white hover:text-brand-red transition">
+                            <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                                <path
+                                    d="M7.8 2h8.4C19.4 2 22 4.6 22 7.8v8.4a5.8 5.8 0 0 1-5.8 5.8H7.8C4.6 22 2 19.4 2 16.2V7.8A5.8 5.8 0 0 1 7.8 2m-.2 2A3.6 3.6 0 0 0 4 7.6v8.8C4 18.39 5.61 20 7.6 20h8.8a3.6 3.6 0 0 0 3.6-3.6V7.6C20 5.61 18.39 4 16.4 4H7.6m9.65 1.5a1.25 1.25 0 0 1 1.25 1.25A1.25 1.25 0 0 1 17.25 8 1.25 1.25 0 0 1 16 6.75a1.25 1.25 0 0 1 1.25-1.25M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3z" />
+                            </svg>
+                        </a>
+                        <a href="https://github.com/Akhlak-Hossain-Jim/pulse-thread" target="_blank"
+                            class="text-white hover:text-brand-red transition">
+                            <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                                <path
+                                    d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
+                            </svg>
+                        </a>
+                    </div>
+                </div>
+                <div>
+                    <h3 class="text-white font-bold mb-6 tracking-wide uppercase text-sm">Navigation</h3>
+                    <ul class="space-y-3">
+                        <li><a href="index.html" class="hover:text-brand-red transition">Home</a></li>
+                        <li><a href="about.html" class="hover:text-brand-red transition">About Project</a></li>
+                        <li><a href="https://buymeacoffee.com/ahjim" target="_blank"
+                                class="hover:text-brand-red transition">Donate to Dev</a></li>
+                    </ul>
+                </div>
+                <div>
+                    <h3 class="text-white font-bold mb-6 tracking-wide uppercase text-sm">Legal</h3>
+                    <ul class="space-y-3">
+                        <li><a href="privacy.html" class="hover:text-brand-red transition">Privacy Policy</a></li>
+                        <li><a href="terms.html" class="hover:text-brand-red transition">Terms & Conditions</a></li>
+                        <li><a href="deletion.html" class="hover:text-brand-red transition">Delete Account</a></li>
+                    </ul>
+                </div>
+            </div>
+            <div class="border-t border-slate-800 pt-8 text-center text-sm">
+                <p>&copy; 2026 PulseThread. Open Source by <a href="https://akhlak.dev" target="_blank"
+                        class="text-brand-red hover:text-rose-400 transition font-bold">Akhlak</a>.</p>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        const btn = document.getElementById('mobile-menu-btn');
+        const menu = document.getElementById('mobile-menu');
+        btn.addEventListener('click', () => menu.classList.toggle('hidden'));
+    </script>
+</body>
+
+</html>
