@@ -44,3 +44,8 @@ app-example
 
 # env files
 .env
+
+# User defined
+.env.local
+Pointers.md
+SRS&PRD.md
