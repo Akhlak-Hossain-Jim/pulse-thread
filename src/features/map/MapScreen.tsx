@@ -1,6 +1,6 @@
 
-import { Activity, Navigation, Plus } from 'lucide-react-native';
-import React, { useEffect, useState } from 'react';
+import { Activity, LocateFixed, Navigation, Plus } from 'lucide-react-native';
+import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import MapView, { Polyline, PROVIDER_GOOGLE, Region } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -18,6 +18,7 @@ import { DonorVerificationSheet } from '../verification/DonorVerificationSheet';
 import { RequesterVerificationSheet } from '../verification/RequesterVerificationSheet';
 
 export const MapScreen = () => {
+  const mapRef = useRef<MapView>(null);
   const insets = useSafeAreaInsets();
   const { location, errorMsg, requestPermission, setLocation } = useLocationStore();
   const { session } = useAuth();
@@ -324,11 +325,12 @@ export const MapScreen = () => {
     <ErrorBoundary onReset={() => requestPermission()}>
         <View style={styles.container}>
         <MapView
+            ref={mapRef}
             provider={PROVIDER_GOOGLE}
             style={styles.map}
             initialRegion={initialRegion}
             showsUserLocation
-            showsMyLocationButton
+            showsMyLocationButton={false}
             onRegionChange={handleRegionChange}
             onRegionChangeComplete={handleRegionChangeComplete}
         >
@@ -402,13 +404,33 @@ export const MapScreen = () => {
         )}
         
         {!isPickingLocation && (
-            <TouchableOpacity 
-                style={styles.requestButton}
-                onPress={() => setIsRequestSheetVisible(true)}
-            >
-                <Plus color={COLORS.white} size={24} />
-                <Text style={styles.requestButtonText}>REQUEST BLOOD</Text>
-            </TouchableOpacity>
+            <>
+                <TouchableOpacity 
+                    style={styles.requestButton}
+                    onPress={() => setIsRequestSheetVisible(true)}
+                >
+                    <Plus color={COLORS.white} size={24} />
+                    <Text style={styles.requestButtonText}>REQUEST BLOOD</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                    style={styles.myLocationButton}
+                    onPress={() => {
+                        if (location && mapRef.current) {
+                            mapRef.current.animateToRegion({
+                                latitude: location.coords.latitude,
+                                longitude: location.coords.longitude,
+                                latitudeDelta: 0.05,
+                                longitudeDelta: 0.05,
+                            });
+                        } else {
+                            requestPermission();
+                        }
+                    }}
+                >
+                    <LocateFixed color={COLORS.primary} size={24} />
+                </TouchableOpacity>
+            </>
         )}
 
         {/* Floating Status Buttons Container */}
@@ -645,6 +667,21 @@ const styles = StyleSheet.create({
   errorModalButtonText: {
     color: COLORS.white,
     fontWeight: 'bold',
+  },
+  myLocationButton: {
+    position: 'absolute',
+    bottom: SPACING.sm,
+    right: SPACING.sm,
+    backgroundColor: COLORS.white,
+    padding: 12,
+    borderRadius: 30,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
 
