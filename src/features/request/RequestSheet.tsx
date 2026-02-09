@@ -1,10 +1,11 @@
 
 import { ArrowLeft, MapPin, Navigation, X } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, KeyboardAvoidingView, Modal, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, FlatList, KeyboardAvoidingView, Modal, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
 import { useAuth } from '../../context/AuthProvider';
+import { PlatformAlert } from '../../lib/platformAlert';
 import { supabase } from '../../lib/supabase';
 import { useLocationStore } from '../../store/locationStore';
 
@@ -86,7 +87,7 @@ export const RequestSheet = ({ visible, onClose, onPickLocation, selectedLocatio
               setSelectedPlace(data.result); // Contains geometry.location.lat/lng
           }
       } catch (error) {
-          Alert.alert("Error", "Could not fetch place details");
+          PlatformAlert.alert("Error", "Could not fetch place details");
       }
   };
 
@@ -112,7 +113,7 @@ export const RequestSheet = ({ visible, onClose, onPickLocation, selectedLocatio
     }
 
     if (!bloodType || !hospital || !finalLat || !session) {
-      Alert.alert('Error', 'Please fill in all fields and ensure location is active.');
+      PlatformAlert.alert('Error', 'Please fill in all fields and ensure location is active.');
       return;
     }
 
@@ -142,7 +143,7 @@ export const RequestSheet = ({ visible, onClose, onPickLocation, selectedLocatio
 
       if (error) throw error;
       
-      Alert.alert('Success', 'Request broadcasted to nearby donors!');
+      PlatformAlert.alert('Success', 'Request broadcasted to nearby donors!');
       setBloodType('');
       setHospital('');
       setQuery('');
@@ -153,7 +154,7 @@ export const RequestSheet = ({ visible, onClose, onPickLocation, selectedLocatio
       setSelectedPlace(null);
       onClose();
     } catch (error: any) {
-      Alert.alert('Error', error.message);
+      PlatformAlert.alert('Error', error.message);
     } finally {
       setLoading(false);
     }
@@ -161,7 +162,7 @@ export const RequestSheet = ({ visible, onClose, onPickLocation, selectedLocatio
 
   const handleNextStep = () => {
       if (!bloodType || !units) {
-          Alert.alert("Missing Info", "Please select blood type and units.");
+          PlatformAlert.alert("Missing Info", "Please select blood type and units.");
           return;
       }
       setStep(2);

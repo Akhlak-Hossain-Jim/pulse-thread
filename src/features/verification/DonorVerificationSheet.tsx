@@ -1,8 +1,9 @@
 
 import { CheckCircle, Scan, X } from 'lucide-react-native';
 import React, { useState } from 'react';
-import { ActivityIndicator, Alert, Linking, Modal, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Linking, Modal, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { COLORS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
+import { PlatformAlert } from '../../lib/platformAlert';
 import { supabase } from '../../lib/supabase';
 import { QRCodeScanner } from './QRCodeScanner';
 
@@ -80,12 +81,12 @@ export const DonorVerificationSheet = ({ donation, visible, onClose, onVerifySuc
            }
       }
 
-      Alert.alert('Success', `Status updated to ${newStatus}`, [
+      PlatformAlert.alert('Success', `Status updated to ${newStatus}`, [
           { text: 'OK', onPress: () => onVerifySuccess?.() }
       ]);
 
     } catch (error: any) {
-      Alert.alert('Error', error.message);
+      PlatformAlert.alert('Error', error.message);
     } finally {
       setLoading(false);
     }

@@ -1,9 +1,10 @@
 
 import { Navigation, X } from 'lucide-react-native';
 import React, { useState } from 'react';
-import { ActivityIndicator, Alert, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { COLORS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
 import { useAuth } from '../../context/AuthProvider';
+import { PlatformAlert } from '../../lib/platformAlert';
 import { supabase } from '../../lib/supabase';
 
 interface AcceptSheetProps {
@@ -42,12 +43,12 @@ export const AcceptSheet = ({ request, visible, onClose, onSuccess }: AcceptShee
 
       if (requestError) throw requestError;
 
-      Alert.alert('Accepted!', 'Please proceed to the hospital. Navigation starting...');
+      PlatformAlert.alert('Accepted!', 'Please proceed to the hospital. Navigation starting...');
       if (onSuccess) onSuccess();
       onClose();
       // In a real app, we would trigger navigation here
     } catch (error: any) {
-      Alert.alert('Error', error.message);
+      PlatformAlert.alert('Error', error.message);
     } finally {
       setLoading(false);
     }

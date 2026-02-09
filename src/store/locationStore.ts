@@ -1,7 +1,8 @@
 
 import * as Location from 'expo-location';
-import { Alert, Linking } from 'react-native';
+import { Linking } from 'react-native';
 import { create } from 'zustand';
+import { PlatformAlert } from '../lib/platformAlert';
 
 type LocationState = {
   location: Location.LocationObject | null;
@@ -22,7 +23,7 @@ export const useLocationStore = create<LocationState>((set) => ({
       const enabled = await Location.hasServicesEnabledAsync();
       console.log("Location Services Enabled:", enabled);
       if (!enabled) {
-          Alert.alert(
+          PlatformAlert.alert(
               "Location Disabled", 
               "Please enable location services to use this feature.",
               [
@@ -39,7 +40,7 @@ export const useLocationStore = create<LocationState>((set) => ({
       console.log("Permission status:", status);
       
       if (status !== 'granted') {
-          Alert.alert(
+          PlatformAlert.alert(
               "Permission Denied",
               "We need your location to find nearby donors. Please enable it in settings.",
               [
