@@ -1,47 +1,651 @@
 
-import { MapPin } from 'lucide-react-native';
-import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
-import { COLORS, SPACING, TYPOGRAPHY } from '../../constants/theme';
+import { GoogleMap, Libraries, Marker, Polyline, useJsApiLoader } from '@react-google-maps/api';
+import { Activity, Navigation, Plus } from 'lucide-react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { ErrorBoundary } from '../../components/ErrorBoundary';
+import { COLORS, SPACING } from '../../constants/theme';
+import { useAuth } from '../../context/AuthProvider';
+import { decodePolyline } from '../../lib/polyline';
+import { supabase } from '../../lib/supabase';
+import { useLocationStore } from '../../store/locationStore';
+import { AcceptSheet } from '../donor/AcceptSheet';
+import { RequestSheet } from '../request/RequestSheet';
+import { DonorVerificationSheet } from '../verification/DonorVerificationSheet';
+import { RequesterVerificationSheet } from '../verification/RequesterVerificationSheet';
+
+// Libraries to load for Google Maps
+const libraries: Libraries = ['places', 'geometry'];
+
+const containerStyle = {
+  width: '100%',
+  height: '100%',
+};
 
 export const MapScreen = () => {
+  const insets = useSafeAreaInsets();
+  const { location, errorMsg, requestPermission, setLocation } = useLocationStore();
+  const { session } = useAuth();
+  const [isRequestSheetVisible, setIsRequestSheetVisible] = useState(false);
+  const [requests, setRequests] = useState<any[]>([]);
+  const [selectedRequest, setSelectedRequest] = useState<any | null>(null);
+  const [myActiveRequest, setMyActiveRequest] = useState<any | null>(null);
+  const [myActiveDonation, setMyActiveDonation] = useState<any | null>(null);
+  const [isVerificationVisible, setIsVerificationVisible] = useState(false);
+  const [isDonorActionsVisible, setIsDonorActionsVisible] = useState(false);
+  const [isPickingLocation, setIsPickingLocation] = useState(false);
+  const [pickupCoords, setPickupCoords] = useState<any>(null);
+  const [dataError, setDataError] = useState<string | null>(null);
+  
+  // Route State
+  const [routeCoords, setRouteCoords] = useState<any[]>([]);
+
+  // Map Instance
+  const [map, setMap] = useState<google.maps.Map | null>(null);
+
+  const GOOGLE_API_KEY =
+    process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_WEB ||
+    process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_ANDROID ||
+    '';
+
+  const { isLoaded, loadError } = useJsApiLoader({
+    id: 'google-map-script',
+    googleMapsApiKey: GOOGLE_API_KEY, // The user says this key works for all in local
+    libraries,
+  });
+
+  const onLoad = useCallback(function callback(mapInstance: google.maps.Map) {
+      setMap(mapInstance);
+  }, []);
+
+  const onUnmount = useCallback(function callback(map: google.maps.Map) {
+      setMap(null);
+  }, []);
+
+  // --- Handlers from Native Version ---
+
+  const handleRegionChangeComplete = async () => {
+    if (isPickingLocation && map) {
+        const center = map.getCenter();
+        if (!center) return;
+        
+        const lat = center.lat();
+        const lng = center.lng();
+
+        try {
+            // Simple reverse geocode or just coords
+            // For web, we could use the Geocoder service if loaded, 
+            // but for simplicity we'll replicate the fetch logic if needed or just simulate.
+            // Using direct fetch to match native implementation's logic
+            const res = await fetch(
+                `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${GOOGLE_API_KEY}`
+            );
+            const data = await res.json();
+            if (data.status === 'OK' && data.results.length > 0) {
+                setPickupCoords({
+                    latitude: lat,
+                    longitude: lng,
+                    address: data.results[0].formatted_address
+                });
+            } else {
+                 setPickupCoords({
+                    latitude: lat,
+                    longitude: lng,
+                    address: `${lat.toFixed(4)}, ${lng.toFixed(4)}`
+                });
+            }
+        } catch (e) {
+             setPickupCoords({
+                latitude: lat,
+                longitude: lng,
+                address: `${lat.toFixed(4)}, ${lng.toFixed(4)}`
+            });
+        }
+    }
+  };
+
+  // --- Data Fetching Logic (Identical to Native) ---
+
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+        console.log("MapScreen mounted, triggering permissions...");
+        await requestPermission();
+        await fetchMyActiveState();
+        await fetchRequests();
+    }, 1000); 
+
+    return () => clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    if (!session?.user) return;
+    const channel = supabase.channel('map_screen_updates')
+        .on(
+            'postgres_changes',
+            {
+                event: '*',
+                schema: 'public',
+                table: 'requests',
+                filter: `requester_id=eq.${session.user.id}`,
+            },
+            () => {
+                fetchMyActiveState();
+            }
+        )
+        .on(
+            'postgres_changes',
+            {
+                event: '*',
+                schema: 'public',
+                table: 'donations',
+                filter: `donor_id=eq.${session.user.id}`,
+            },
+            () => {
+                fetchMyActiveState();
+            }
+        )
+        .subscribe();
+        
+    let requestChannel: any = null;
+    if (myActiveRequest) {
+         requestChannel = supabase.channel(`my_request_donations:${myActiveRequest.id}`)
+            .on(
+                'postgres_changes',
+                {
+                    event: '*',
+                    schema: 'public',
+                    table: 'donations',
+                    filter: `request_id=eq.${myActiveRequest.id}`
+                },
+                () => {
+                    fetchMyActiveState();
+                }
+            )
+            .subscribe();
+    }
+
+    return () => {
+        supabase.removeChannel(channel);
+        if (requestChannel) supabase.removeChannel(requestChannel);
+    };
+  }, [session?.user?.id, myActiveRequest?.id]);
+
+  const fetchMyActiveState = async () => {
+    if (!session) return;
+    
+    const { data: requestData } = await supabase
+        .from('requests')
+        .select('*')
+        .eq('requester_id', session.user.id)
+        .in('status', ['PENDING', 'ACCEPTED'])
+        .maybeSingle(); 
+    
+    setMyActiveRequest(requestData);
+
+    const { data: donationData } = await supabase
+        .from('donations')
+        .select('*, request:requests(*)')
+        .eq('donor_id', session.user.id)
+        .in('status', ['EN_ROUTE', 'ARRIVED', 'MATCHED'])
+        .maybeSingle();
+    
+    setMyActiveDonation(donationData);
+  };
+
+  const fetchRequests = async () => {
+    const { data, error } = await supabase
+      .from('requests')
+      .select('*, donations(status)')
+      .eq('status', 'PENDING');
+    
+    if (error) {
+     console.error(error);
+    } else {
+      const filtered = (data || []).filter((req: any) => {
+             const activeDonations = req.donations?.filter((d: any) => d.status !== 'CANCELLED') || [];
+             if (req.location) {
+                const matches = req.location.match(/POINT\(([^ ]+) ([^ ]+)\)/);
+                if (matches) {
+                    const lon = parseFloat(matches[1]);
+                    const lat = parseFloat(matches[2]);
+                    if (isNaN(lon) || isNaN(lat)) {
+                         const msg = `Invalid coordinates for request ${req.id}: ${req.location}`;
+                         console.error(msg);
+                         setDataError(msg); 
+                         return false;
+                    }
+                }
+             }
+             return activeDonations.length < req.units_needed;
+      });
+      setRequests(filtered);
+    }
+  };
+  
+  useEffect(() => {
+      if (myActiveDonation && location) {
+          fetchDirections();
+      } else {
+          setRouteCoords([]);
+      }
+  }, [myActiveDonation, location]);
+
+  const fetchDirections = async () => {
+      if (!myActiveDonation || !location) return;
+      
+      const { data: requestData } = await supabase
+        .from('requests')
+        .select('location')
+        .eq('id', myActiveDonation.request_id)
+        .single();
+      
+      if (!requestData?.location) return;
+
+      const matches = requestData.location.match(/POINT\(([^ ]+) ([^ ]+)\)/);
+      if (!matches) return;
+      const destLng = matches[1];
+      const destLat = matches[2];
+
+      try {
+          const resp = await fetch(
+              `https://maps.googleapis.com/maps/api/directions/json?origin=${location.coords.latitude},${location.coords.longitude}&destination=${destLat},${destLng}&key=${GOOGLE_API_KEY}`
+          );
+          const data = await resp.json();
+          if (data.routes.length > 0) {
+              const points = decodePolyline(data.routes[0].overview_polyline.points);
+              // Convert to Google Maps format { lat, lng }
+              setRouteCoords(points.map(p => ({ lat: p.latitude, lng: p.longitude })));
+          }
+      } catch (error) {
+          console.error("Error fetching directions", error);
+      }
+  };
+
+
+  const handlePickLocationStart = () => {
+      setIsRequestSheetVisible(false);
+      setIsPickingLocation(true);
+      if (location) {
+          setPickupCoords({
+              latitude: location.coords.latitude,
+              longitude: location.coords.longitude
+          });
+      }
+  };
+
+  const handlePickLocationConfirm = () => {
+      setIsPickingLocation(false);
+      setIsRequestSheetVisible(true);
+  };
+
+  const handleForceLocation = () => {
+      setLocation({
+          coords: {
+              latitude: 37.7749,
+              longitude: -122.4194,
+              altitude: null,
+              accuracy: null,
+              altitudeAccuracy: null,
+              heading: null,
+              speed: null
+          },
+          timestamp: Date.now()
+      } as any);
+  };
+
+  if (loadError) {
+      return (
+          <View style={styles.loadingContainer}>
+              <Text style={styles.errorText}>Map cannot be loaded.</Text>
+          </View>
+      );
+  }
+
+  if (!isLoaded || !location) {
     return (
-        <View style={styles.container}>
-            <View style={styles.content}>
-                <MapPin size={64} color={COLORS.primary} />
-                <Text style={styles.title}>Map View Unavailable</Text>
-                <Text style={styles.message}>
-                    The interactive map feature is optimized for the mobile application. 
-                    Please use the mobile app for the best experience.
-                </Text>
-            </View>
-        </View>
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+        <Text style={styles.loadingText}>Locating you...</Text>
+        {errorMsg && <Text style={styles.errorText}>{errorMsg}</Text>}
+        <TouchableOpacity onPress={handleForceLocation} style={{ marginTop: 20, padding: 10, backgroundColor: COLORS.gray, borderRadius: 8 }}>
+            <Text style={{ color: COLORS.text }}>Use Default Location (Skip)</Text>
+        </TouchableOpacity>
+      </View>
     );
+  }
+
+  const center = {
+    lat: location.coords.latitude,
+    lng: location.coords.longitude,
+  };
+
+  return (
+    <ErrorBoundary onReset={() => requestPermission()}>
+        <View style={styles.container}>
+            <GoogleMap
+                mapContainerStyle={containerStyle}
+                center={center}
+                zoom={14}
+                onLoad={onLoad}
+                onUnmount={onUnmount}
+                onDragEnd={handleRegionChangeComplete} // Approximation for "RegionChangeComplete"
+                options={{
+                    disableDefaultUI: false,
+                    zoomControl: true,
+                    streetViewControl: false,
+                    mapTypeControl: false,
+                }}
+            >
+                {/* User Location Marker */}
+                <Marker
+                    position={center}
+                    icon={{
+                        url: "http://maps.google.com/mapfiles/ms/icons/blue-dot.png" 
+                    }}
+                    title="Your Location"
+                />
+
+                {/* Request Markers */}
+                {!isPickingLocation && requests.map((req) => {
+                    if (!req.location) return null;
+                    const matches = req.location.match(/POINT\(([^ ]+) ([^ ]+)\)/);
+                    if (!matches) return null;
+                    const longitude = parseFloat(matches[1]);
+                    const latitude = parseFloat(matches[2]);
+
+                    if (isNaN(longitude) || isNaN(latitude)) return null;
+                    if (req.requester_id === session?.user.id) return null;
+
+                    return (
+                        <Marker
+                            key={req.id}
+                            position={{ lat: latitude, lng: longitude }}
+                            title={`${req.blood_type} Needed`}
+                            onClick={() => setSelectedRequest(req)}
+                        />
+                    );
+                })}
+
+                {/* Route Polyline */}
+                {routeCoords.length > 0 && (
+                    <Polyline
+                        path={routeCoords}
+                        options={{
+                            strokeColor: COLORS.primary,
+                            strokeOpacity: 1,
+                            strokeWeight: 4,
+                        }}
+                    />
+                )}
+            </GoogleMap>
+
+            {/* Center Pin for Picking (Overlay) */}
+            {isPickingLocation && (
+                <View style={styles.centerPinContainer} pointerEvents="none">
+                    <View style={styles.marker}>
+                        <View style={{ width: 10, height: 10, backgroundColor: COLORS.primary, borderRadius: 5 }} />
+                    </View>
+                </View>
+            )}
+
+            {/* UI Overlays (Same as Native) */}
+            {isPickingLocation && (
+                <View style={styles.pickerOverlay}>
+                    <Text style={styles.pickerInstruction}>
+                        {pickupCoords?.address || "Move map to location"}
+                    </Text>
+                    <TouchableOpacity style={styles.confirmButton} onPress={handlePickLocationConfirm}>
+                        <Text style={styles.confirmButtonText}>CONFIRM LOCATION</Text>
+                    </TouchableOpacity>
+                </View> 
+            )}
+            
+            {!isPickingLocation && (
+                <TouchableOpacity 
+                    style={styles.requestButton}
+                    onPress={() => setIsRequestSheetVisible(true)}
+                >
+                    <Plus color={COLORS.white} size={24} />
+                    <Text style={styles.requestButtonText}>REQUEST BLOOD</Text>
+                </TouchableOpacity>
+            )}
+
+            {/* Floating Status Buttons Container */}
+            {!isPickingLocation && (
+                <View style={[styles.floatingButtonContainer, { top: insets.top + SPACING.lg }]}>
+                    {myActiveRequest && (
+                        <TouchableOpacity 
+                            style={[styles.floatingButton, styles.requesterButton]}
+                            onPress={() => setIsVerificationVisible(true)}
+                        >
+                            <Activity color={COLORS.white} size={24} />
+                            <Text style={styles.requestButtonText}>MY REQUEST</Text>
+                        </TouchableOpacity>
+                    )}
+
+                    {myActiveDonation && (
+                        <TouchableOpacity 
+                            style={[styles.floatingButton, styles.donorButton]}
+                            onPress={() => setIsDonorActionsVisible(true)}
+                        >
+                            <Navigation color={COLORS.white} size={24} />
+                            <Text style={styles.requestButtonText}>DONATION ACTIVE</Text>
+                        </TouchableOpacity>
+                    )}
+                </View>
+            )}
+
+            {/* Modals & Sheets */}
+            <RequestSheet 
+                visible={isRequestSheetVisible} 
+                onClose={() => setIsRequestSheetVisible(false)}
+                onPickLocation={handlePickLocationStart}
+                selectedLocation={pickupCoords}
+            />
+
+            <AcceptSheet
+                visible={!!selectedRequest}
+                request={selectedRequest}
+                onClose={() => {
+                    setSelectedRequest(null);
+                    fetchMyActiveState();
+                }}
+            />
+
+            {myActiveRequest && (
+                <RequesterVerificationSheet
+                    visible={isVerificationVisible}
+                    requestId={myActiveRequest.id}
+                    onClose={() => setIsVerificationVisible(false)}
+                />
+            )}
+
+            {myActiveDonation && (
+                <DonorVerificationSheet
+                    visible={isDonorActionsVisible}
+                    donation={myActiveDonation}
+                    onClose={() => setIsDonorActionsVisible(false)}
+                    onVerifySuccess={() => fetchMyActiveState()}
+                />
+            )}
+
+             {dataError && (
+                <View style={styles.errorModalOverlay}>
+                    <View style={styles.errorModalBox}>
+                        <Text style={styles.errorModalTitle}>Data Error Detected</Text>
+                        <Text style={styles.errorModalText}>{dataError}</Text>
+                        <TouchableOpacity 
+                            style={styles.errorModalButton}
+                            onPress={() => setDataError(null)}
+                        >
+                            <Text style={styles.errorModalButtonText}>Dismiss</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            )}
+        </View>
+    </ErrorBoundary>
+  );
 };
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: COLORS.background,
-        justifyContent: 'center',
-        alignItems: 'center',
-        padding: SPACING.xl,
-    },
-    content: {
-        alignItems: 'center',
-        maxWidth: 400,
-        gap: SPACING.lg,
-    },
-    title: {
-        fontSize: TYPOGRAPHY.sizes.xl,
-        fontWeight: 'bold',
-        color: COLORS.text,
-        textAlign: 'center',
-    },
-    message: {
-        fontSize: TYPOGRAPHY.sizes.md,
-        color: COLORS.darkGray,
-        textAlign: 'center',
-        lineHeight: 24,
-    },
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: COLORS.background,
+  },
+  loadingText: {
+    marginTop: SPACING.md,
+    fontSize: 16,
+    color: COLORS.text,
+  },
+  errorText: {
+    marginTop: SPACING.md,
+    color: COLORS.error,
+    textAlign: 'center',
+    marginHorizontal: SPACING.lg,
+  },
+  centerPinContainer: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
+    pointerEvents: 'none',
+  },
+  marker: {
+      padding: 8,
+      borderRadius: 20,
+      borderWidth: 2,
+      borderColor: COLORS.white,
+      backgroundColor: COLORS.primary,
+      alignItems: 'center',
+      justifyContent: 'center',
+  },
+  pickerOverlay: {
+    position: 'absolute',
+    bottom: 40,
+    left: 20,
+    right: 20,
+    backgroundColor: COLORS.white,
+    padding: SPACING.lg,
+    borderRadius: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+    alignItems: 'center',
+    zIndex: 20,
+  },
+  pickerInstruction: {
+    fontSize: 16,
+    color: COLORS.text,
+    marginBottom: SPACING.md,
+    textAlign: 'center',
+  },
+  confirmButton: {
+    backgroundColor: COLORS.primary,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.xl,
+    borderRadius: 8,
+    width: '100%',
+    alignItems: 'center',
+  },
+  confirmButtonText: {
+    color: COLORS.white,
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+  requestButton: {
+    position: 'absolute',
+    bottom: SPACING.sm,
+    left: SPACING.sm,
+    backgroundColor: COLORS.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 30,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+    zIndex: 20,
+  },
+  requestButtonText: {
+    color: COLORS.white,
+    fontWeight: 'bold',
+    marginLeft: 8,
+  },
+  floatingButtonContainer: {
+    position: 'absolute',
+    left: SPACING.sm,
+    right: SPACING.sm,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    zIndex: 20,
+  },
+  floatingButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
+    borderRadius: 20,
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    backgroundColor: COLORS.gray, 
+  },
+  requesterButton: {
+    backgroundColor: COLORS.primary,
+  },
+  donorButton: {
+    backgroundColor: COLORS.success,
+  },
+  errorModalOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 999,
+  },
+  errorModalBox: {
+    width: '85%',
+    backgroundColor: COLORS.white,
+    padding: SPACING.xl,
+    borderRadius: 16,
+    alignItems: 'center',
+    elevation: 5,
+  },
+  errorModalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: COLORS.error,
+    marginBottom: SPACING.md,
+  },
+  errorModalText: {
+    fontSize: 14,
+    color: COLORS.text,
+    textAlign: 'center',
+    marginBottom: SPACING.lg,
+    fontFamily: 'monospace',
+  },
+  errorModalButton: {
+    backgroundColor: COLORS.primary,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.xl,
+    borderRadius: 8,
+  },
+  errorModalButtonText: {
+    color: COLORS.white,
+    fontWeight: 'bold',
+  },
 });

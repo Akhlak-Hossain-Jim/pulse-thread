@@ -556,8 +556,8 @@ const styles = StyleSheet.create({
   },
   requestButton: {
     position: 'absolute',
-    bottom: 40,
-    right: 20,
+    bottom: SPACING.sm,
+    left: SPACING.sm,
     backgroundColor: COLORS.primary,
     flexDirection: 'row',
     alignItems: 'center',
