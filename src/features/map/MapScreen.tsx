@@ -31,6 +31,7 @@ export const MapScreen = () => {
   const [isPickingLocation, setIsPickingLocation] = useState(false);
   const [pickupCoords, setPickupCoords] = useState<any>(null);
   const [dataError, setDataError] = useState<string | null>(null);
+  const [initError, setInitError] = useState<Error | null>(null);
 
   
   const GOOGLE_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_ANDROID;
@@ -78,10 +79,15 @@ export const MapScreen = () => {
   };
   useEffect(() => {
     const timer = setTimeout(async () => {
-        console.log("MapScreen mounted, triggering permissions...");
-        await requestPermission();
-        await fetchMyActiveState();
-        await fetchRequests();
+        try {
+            console.log("MapScreen mounted, triggering permissions...");
+            await requestPermission();
+            await fetchMyActiveState();
+            await fetchRequests();
+        } catch (err: any) {
+            console.error("MapScreen Init Error:", err);
+            setInitError(err);
+        }
     }, 1000); // 1s delay to let navigation finish and map mount
 
     return () => clearTimeout(timer);
@@ -290,6 +296,10 @@ export const MapScreen = () => {
           timestamp: Date.now()
       } as any);
   };
+
+  if (initError) {
+      throw initError; // Re-throw to be caught by ErrorBoundary
+  }
 
   if (!location) {
     return (
