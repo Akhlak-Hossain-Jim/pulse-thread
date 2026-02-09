@@ -1,4 +1,5 @@
 
+import { useRouter } from 'expo-router';
 import { ArrowLeft, MapPin, Navigation, X } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, FlatList, KeyboardAvoidingView, Modal, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
@@ -19,6 +20,7 @@ interface RequestSheetProps {
 const GOOGLE_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_ANDROID;
 
 export const RequestSheet = ({ visible, onClose, onPickLocation, selectedLocation }: RequestSheetProps) => {
+  const router = useRouter();
   const { session } = useAuth();
   const { location: gpsLocation } = useLocationStore();
   const insets = useSafeAreaInsets();
@@ -127,7 +129,25 @@ export const RequestSheet = ({ visible, onClose, onPickLocation, selectedLocatio
 
       if (profileError) {
           console.error("Profile creation failed:", JSON.stringify(profileError, null, 2));
-          // We continue anyway, hoping it's non-fatal (like existing profile)
+          PlatformAlert.alert(
+            "Incomplete Profile",
+            "You have not completed your profile. Please complete it to continue.",
+            [
+              {
+                text: "Cancel",
+                style: "cancel",
+                onPress: () => setLoading(false)
+              },
+              {
+                text: "Go to Profile",
+                onPress: () => {
+                  onClose();
+                  router.push("/(authenticated)/profile");
+                }
+              }
+            ]
+          );
+          return;
       }
 
       const { error } = await supabase.from('requests').insert({
