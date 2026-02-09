@@ -380,7 +380,7 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingTop: 60,
+    paddingTop: Platform.OS === 'web' ? 20 : 60,
     paddingBottom: SPACING.md,
     paddingHorizontal: SPACING.lg,
     backgroundColor: COLORS.white,

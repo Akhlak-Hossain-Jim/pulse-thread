@@ -1,7 +1,7 @@
 import { useRouter } from 'expo-router';
 import { Droplet, HeartHandshake, History as HistoryIcon } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, FlatList, Platform, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { COLORS, SHADOWS, SPACING, TYPOGRAPHY } from '../../src/constants/theme';
 import { useAuth } from '../../src/context/AuthProvider';
 import { supabase } from '../../src/lib/supabase';
@@ -176,7 +176,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.background,
   },
   header: {
-    paddingTop: 60,
+    paddingTop: Platform.OS === 'web' ? 20 : 60,
     paddingBottom: SPACING.lg,
     paddingHorizontal: SPACING.lg,
     backgroundColor: COLORS.white,

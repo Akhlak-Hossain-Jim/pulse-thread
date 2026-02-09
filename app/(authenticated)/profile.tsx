@@ -1,6 +1,6 @@
 import { LogOut, Save, User as UserIcon } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { COLORS, SHADOWS, SPACING, TYPOGRAPHY } from '../../src/constants/theme';
 import { useAuth } from '../../src/context/AuthProvider';
 import { supabase } from '../../src/lib/supabase';
@@ -189,7 +189,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.background,
   },
   header: {
-    paddingTop: 60,
+    paddingTop: Platform.OS === 'web' ? 20 : 60,
     paddingBottom: SPACING.lg,
     paddingHorizontal: SPACING.lg,
     backgroundColor: COLORS.white,
