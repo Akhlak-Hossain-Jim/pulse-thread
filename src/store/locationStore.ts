@@ -1,8 +1,23 @@
-
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import { Linking } from 'react-native';
 import { create } from 'zustand';
 import { PlatformAlert } from '../lib/platformAlert';
+
+const STORAGE_KEY = '@last_known_location';
+
+const DEFAULT_LOCATION = {
+  coords: {
+    latitude: 37.7749,
+    longitude: -122.4194,
+    altitude: null,
+    accuracy: null,
+    altitudeAccuracy: null,
+    heading: null,
+    speed: null
+  },
+  timestamp: Date.now()
+} as any;
 
 type LocationState = {
   location: Location.LocationObject | null;
@@ -10,18 +25,32 @@ type LocationState = {
   setLocation: (location: Location.LocationObject) => void;
   setErrorMsg: (msg: string) => void;
   requestPermission: () => Promise<void>;
+  loadPersistedLocation: () => Promise<void>;
 };
 
-export const useLocationStore = create<LocationState>((set) => ({
+export const useLocationStore = create<LocationState>((set, get) => ({
   location: null,
   errorMsg: null,
-  setLocation: (location) => set({ location }),
+  setLocation: (location) => {
+    set({ location });
+    AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(location)).catch(console.error);
+  },
   setErrorMsg: (errorMsg) => set({ errorMsg }),
+  loadPersistedLocation: async () => {
+    try {
+      const saved = await AsyncStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        set({ location: JSON.parse(saved) });
+      }
+    } catch (e) {
+      console.error('Failed to load persisted location', e);
+    }
+  },
   requestPermission: async () => {
     try {
       console.log("Checking if location services are enabled...");
       const enabled = await Location.hasServicesEnabledAsync();
-      console.log("Location Services Enabled:", enabled);
+      
       if (!enabled) {
           PlatformAlert.alert(
               "Location Disabled", 
@@ -31,13 +60,10 @@ export const useLocationStore = create<LocationState>((set) => ({
                   { text: "Open Settings", onPress: () => Linking.openSettings() }
               ]
           );
-          // throw new Error('Location services disabled'); 
-          // Don't throw immediately, maybe they enable it?
       }
 
       console.log("Requesting foreground permissions...");
       const { status } = await Location.requestForegroundPermissionsAsync();
-      console.log("Permission status:", status);
       
       if (status !== 'granted') {
           PlatformAlert.alert(
@@ -51,7 +77,6 @@ export const useLocationStore = create<LocationState>((set) => ({
         throw new Error('Permission denied');
       }
 
-      // Race condition with timeout for location fetching
       const locationPromise = Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
       });
@@ -63,32 +88,30 @@ export const useLocationStore = create<LocationState>((set) => ({
       let location: any = await Promise.race([locationPromise, timeoutPromise]);
       
       if (!location) {
-        // Fallback to last known if current fails/times out (though race handles timeout error)
         location = await Location.getLastKnownPositionAsync({});
       }
       
       if (location) {
         set({ location });
+        await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(location));
       }
 
     } catch (error: any) {
       console.log('Location error:', error);
-      set({ 
-        errorMsg: 'Location not available. Using default.',
-        // FORCE DEFAULT LOCATION on any error (timeout, denial, etc.)
-        location: {
-          coords: {
-              latitude: 37.7749,
-              longitude: -122.4194,
-              altitude: null,
-              accuracy: null,
-              altitudeAccuracy: null,
-              heading: null,
-              speed: null
-          },
-          timestamp: Date.now()
-        } as any
-      });
+      
+      // Attempt to load from persistence if GPS fails
+      const saved = await AsyncStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        set({ 
+          location: JSON.parse(saved),
+          errorMsg: 'GPS failed. Using last active location.' 
+        });
+      } else {
+        set({ 
+          errorMsg: 'Location not available. Using default.',
+          location: DEFAULT_LOCATION
+        });
+      }
     }
   },
 }));
