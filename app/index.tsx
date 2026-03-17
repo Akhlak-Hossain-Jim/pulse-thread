@@ -1,87 +1,103 @@
+import { useRouter } from "expo-router";
+import { StatusBar } from "expo-status-bar";
+import React, { useState } from "react";
+import {
+  Dimensions,
+  ImageBackground,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import PagerView from "react-native-pager-view";
+import { COLORS, SPACING, TYPOGRAPHY } from "../src/constants/theme";
 
-import { StatusBar } from 'expo-status-bar';
-import React, { useState } from 'react';
-import { ActivityIndicator, Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { COLORS, SHADOWS, SPACING, TYPOGRAPHY } from '../src/constants/theme';
-import { supabase } from '../src/lib/supabase';
+const { width, height } = Dimensions.get("window");
 
-export default function LandingPage() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [isSignUp, setIsSignUp] = useState(false);
+const SLIDES = [
+  {
+    id: "1",
+    title: "Welcome to PulseThread",
+    description:
+      "The community-driven Uber for Blood Donation. Connecting heroes with those in critical need instantly.",
+    image:
+      "https://images.unsplash.com/photo-1615461066841-6116e61058f4?q=80&w=1000&auto=format&fit=crop",
+  },
+  {
+    id: "2",
+    title: "Fast & Reliable",
+    description:
+      "Request blood exactly when you need it. Our system automatically alerts nearby available donors.",
+    image:
+      "https://images.unsplash.com/photo-1516574187841-cb9cc2ca948b?q=80&w=1000&auto=format&fit=crop",
+  },
+  {
+    id: "3",
+    title: "Be a Hero",
+    description:
+      "Sign up to donate, track your impact, and earn badges as you help save lives in your community.",
+    image:
+      "https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?q=80&w=1000&auto=format&fit=crop",
+  },
+];
 
-  const handleAuth = async () => {
-    if (!email || !password) {
-      Alert.alert('Error', 'Please fill in all fields');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      if (isSignUp) {
-        const { error } = await supabase.auth.signUp({
-          email,
-          password,
-        });
-        if (error) throw error;
-        Alert.alert('Success', 'Check your email for confirmation!');
-      } else {
-        const { error } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
-        if (error) throw error;
-      }
-    } catch (error: any) {
-      Alert.alert('Error', error.message);
-    } finally {
-      setLoading(false);
-    }
-  };
+export default function WelcomeSliders() {
+  const router = useRouter();
+  const [activePage, setActivePage] = useState(0);
 
   return (
     <View style={styles.container}>
-      <StatusBar style="dark" />
-      <View style={styles.header}>
-        <Text style={styles.title}>PulseThread</Text>
-        <Text style={styles.subtitle}>Uber for Blood Donation</Text>
+      <StatusBar style="light" />
+
+      <PagerView
+        style={styles.pagerView}
+        initialPage={0}
+        onPageSelected={(e) => setActivePage(e.nativeEvent.position)}
+      >
+        {SLIDES.map((slide, index) => (
+          <View key={slide.id} style={styles.page}>
+            <ImageBackground
+              source={{ uri: slide.image }}
+              style={styles.backgroundImage}
+              resizeMode="cover"
+            >
+              {/* Dark overlay for text readability */}
+              <View style={styles.overlay} />
+
+              <View style={styles.contentContainer}>
+                <Text style={styles.title}>{slide.title}</Text>
+                <Text style={styles.description}>{slide.description}</Text>
+              </View>
+            </ImageBackground>
+          </View>
+        ))}
+      </PagerView>
+
+      {/* Pagination Indicators */}
+      <View style={styles.paginationContainer}>
+        {SLIDES.map((_, index) => (
+          <View
+            key={`dot-${index}`}
+            style={[styles.dot, activePage === index && styles.activeDot]}
+          />
+        ))}
       </View>
 
-      <View style={styles.form}>
-        <TextInput
-          style={styles.input}
-          placeholder="Email"
-          placeholderTextColor={COLORS.darkGray}
-          value={email}
-          onChangeText={setEmail}
-          autoCapitalize="none"
-          keyboardType="email-address"
-        />
-        <TextInput
-          style={styles.input}
-          placeholder="Password"
-          placeholderTextColor={COLORS.darkGray}
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-        />
-
-        <TouchableOpacity 
-          style={styles.button} 
-          onPress={handleAuth}
-          disabled={loading}
+      {/* Bottom Action Buttons */}
+      <View style={styles.actionsContainer}>
+        <TouchableOpacity
+          style={styles.primaryButton}
+          onPress={() => router.push("/auth")}
         >
-          {loading ? (
-            <ActivityIndicator color={COLORS.white} />
-          ) : (
-            <Text style={styles.buttonText}>{isSignUp ? 'Sign Up' : 'Sign In'}</Text>
-          )}
+          <Text style={styles.primaryButtonText}>Get Started</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity onPress={() => setIsSignUp(!isSignUp)} style={styles.switchButton}>
-          <Text style={styles.switchText}>
-            {isSignUp ? 'Already have an account? Sign In' : 'Need an account? Sign Up'}
+        <TouchableOpacity
+          style={styles.secondaryButton}
+          onPress={() => router.push("/auth")}
+        >
+          <Text style={styles.secondaryButtonText}>
+            I already have an account
           </Text>
         </TouchableOpacity>
       </View>
@@ -92,56 +108,87 @@ export default function LandingPage() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.secondary,
-    padding: SPACING.lg,
-    justifyContent: 'center',
+    backgroundColor: COLORS.background,
   },
-  header: {
-    marginBottom: SPACING.xxl,
-    alignItems: 'center',
+  pagerView: {
+    flex: 1,
+  },
+  page: {
+    flex: 1,
+  },
+  backgroundImage: {
+    flex: 1,
+    width: "100%",
+    height: "100%",
+  },
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0, 0, 0, 0.5)", // Darken background to make text pop
+  },
+  contentContainer: {
+    flex: 1,
+    justifyContent: "center",
+    paddingHorizontal: SPACING.xl,
+    marginTop: height * 0.2, // Push text down a bit
   },
   title: {
-    fontSize: TYPOGRAPHY.sizes.xxxl,
-    fontWeight: 'bold',
-    color: COLORS.primary,
-    marginBottom: SPACING.xs,
-  },
-  subtitle: {
-    fontSize: TYPOGRAPHY.sizes.md,
-    color: COLORS.text,
-  },
-  form: {
-    backgroundColor: COLORS.white,
-    padding: SPACING.lg,
-    borderRadius: SPACING.md,
-    ...SHADOWS.card,
-  },
-  input: {
-    backgroundColor: COLORS.gray,
-    padding: SPACING.md,
-    borderRadius: SPACING.sm,
+    fontSize: 42,
+    fontWeight: "bold",
+    color: "#FFFFFF",
     marginBottom: SPACING.md,
-    fontSize: TYPOGRAPHY.sizes.md,
-    color: COLORS.text,
+    lineHeight: 48,
   },
-  button: {
+  description: {
+    fontSize: TYPOGRAPHY.sizes.lg,
+    color: "rgba(255, 255, 255, 0.9)",
+    lineHeight: 28,
+  },
+  paginationContainer: {
+    position: "absolute",
+    bottom: height * 0.22,
+    flexDirection: "row",
+    alignSelf: "center",
+    gap: 8,
+  },
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "rgba(255, 255, 255, 0.4)",
+  },
+  activeDot: {
+    width: 24,
     backgroundColor: COLORS.primary,
-    padding: SPACING.md,
-    borderRadius: SPACING.sm,
-    alignItems: 'center',
-    marginTop: SPACING.sm,
   },
-  buttonText: {
+  actionsContainer: {
+    position: "absolute",
+    bottom: SPACING.xl,
+    left: SPACING.lg,
+    right: SPACING.lg,
+    gap: SPACING.md,
+  },
+  primaryButton: {
+    backgroundColor: COLORS.primary,
+    paddingVertical: SPACING.md,
+    borderRadius: SPACING.md,
+    alignItems: "center",
+  },
+  primaryButtonText: {
     color: COLORS.white,
-    fontWeight: 'bold',
+    fontSize: TYPOGRAPHY.sizes.lg,
+    fontWeight: "bold",
+  },
+  secondaryButton: {
+    paddingVertical: SPACING.md,
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.1)",
+    borderRadius: SPACING.md,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.3)",
+  },
+  secondaryButtonText: {
+    color: COLORS.white,
     fontSize: TYPOGRAPHY.sizes.md,
-  },
-  switchButton: {
-    marginTop: SPACING.md,
-    alignItems: 'center',
-  },
-  switchText: {
-    color: COLORS.action,
-    fontSize: TYPOGRAPHY.sizes.sm,
+    fontWeight: "600",
   },
 });
