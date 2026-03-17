@@ -7,6 +7,7 @@ import { WebOnboardingModal } from '../src/components/WebOnboardingModal';
 import { COLORS } from '../src/constants/theme';
 import { AuthProvider, useAuth } from '../src/context/AuthProvider';
 import { queryClient } from '../src/lib/react-query';
+import { useLocationStore } from '../src/store/locationStore';
 
 
 function InitialLayout() {
@@ -27,6 +28,10 @@ function InitialLayout() {
       router.replace('/(authenticated)/map');
     }
   }, [session, loading, segments]);
+
+  useEffect(() => {
+    useLocationStore.getState().loadPersistedLocation();
+  }, []);
 
   if (loading) {
     return (
