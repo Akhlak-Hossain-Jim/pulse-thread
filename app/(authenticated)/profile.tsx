@@ -5,17 +5,28 @@ import * as Sharing from "expo-sharing";
 import {
   Award,
   BadgeCheck,
+  BookCheck,
+  BookOpen,
   CalendarRange,
+  ChevronRight,
   Droplet,
+  GraduationCap,
+  HeartHandshake,
   LogOut,
+  MapPin,
+  Megaphone,
   Save,
   Share2,
+  X,
+  Zap,
 } from "lucide-react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   Image,
+  KeyboardAvoidingView,
   Platform,
   ScrollView,
   StyleSheet,
@@ -26,6 +37,10 @@ import {
 } from "react-native";
 import QRCode from "react-native-qrcode-svg";
 import { captureRef } from "react-native-view-shot";
+import DateTimePickerModal from "react-native-modal-datetime-picker";
+import { Link } from "expo-router";
+import LearningModal from "../../src/components/LearningModal";
+import { AreaSelectionModal } from "../../src/components/AreaSelectionModal";
 import {
   COLORS,
   SHADOWS,
@@ -50,37 +65,51 @@ export default function ProfileScreen() {
   const { session, signOut } = useAuth();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [isSharing, setIsSharing] = useState(false);
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
   const [bloodType, setBloodType] = useState("");
+  const [age, setAge] = useState<number | null>(null);
+  const [weight, setWeight] = useState<number | null>(null);
+  const [lastDonationDate, setLastDonationDate] = useState<Date | null>(null);
+  const [isDatePickerVisible, setDatePickerVisibility] = useState(false);
+  const [isLearningModalVisible, setLearningModalVisible] = useState(false);
   const [isDonorActive, setIsDonorActive] = useState(false);
   const [expoPushToken, setExpoPushToken] = useState("");
   const [preferredAreas, setPreferredAreas] = useState<string[]>([]);
+  const [isAreaModalVisible, setAreaModalVisible] = useState(false);
+  const [userBadges, setUserBadges] = useState<any[]>([]);
+
+  // Icon mapping
+  const getIconComponent = (iconName: string, size: number, color: string) => {
+    switch (iconName) {
+      case "CalendarRange":
+        return <CalendarRange size={size} color={color} />;
+      case "BadgeCheck":
+        return <BadgeCheck size={size} color={color} />;
+      case "Award":
+        return <Award size={size} color={color} />;
+      case "Megaphone":
+        return <Megaphone size={size} color={color} />;
+      case "Zap":
+        return <Zap size={size} color={color} />;
+      case "HeartHandshake":
+        return <HeartHandshake size={size} color={color} />;
+      case "BookOpen":
+        return <BookOpen size={size} color={color} />;
+      case "BookCheck":
+        return <BookCheck size={size} color={color} />;
+      case "GraduationCap":
+        return <GraduationCap size={size} color={color} />;
+      default:
+        return <Award size={size} color={color} />;
+    }
+  };
 
   const cardRef = useRef<View>(null);
   const storyRef = useRef<View>(null);
 
-  // Computed Badges
-  const isProfileComplete = Boolean(
-    fullName && phone && bloodType && preferredAreas.length > 0,
-  );
-  const isNewJoinee = session?.user?.created_at
-    ? new Date().getTime() - new Date(session.user.created_at).getTime() <
-      30 * 24 * 60 * 60 * 1000
-    : false;
-
-  // Area Search State
-  const [areaQuery, setAreaQuery] = useState("");
-  const [areaPredictions, setAreaPredictions] = useState<any[]>([]);
-  const [showAreaPredictions, setShowAreaPredictions] = useState(false);
-
   const GOOGLE_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_ANDROID;
-
-  useEffect(() => {
-    if (session) {
-      fetchProfile();
-    }
-  }, [session]);
 
   const fetchProfile = async () => {
     try {
@@ -90,7 +119,7 @@ export default function ProfileScreen() {
       const { data, error, status } = await supabase
         .from("profiles")
         .select(
-          `full_name, phone, blood_type, is_donor_active, expo_push_token, preferred_areas`,
+          `full_name, phone, blood_type, is_donor_active, expo_push_token, preferred_areas, age, weight, last_donation_date`,
         )
         .eq("id", session?.user.id)
         .single();
@@ -103,9 +132,41 @@ export default function ProfileScreen() {
         setFullName(data.full_name || "");
         setPhone(data.phone || "");
         setBloodType(data.blood_type || "");
+        setAge(data.age || null);
+        setWeight(data.weight || null);
+        setLastDonationDate(data.last_donation_date ? new Date(data.last_donation_date) : null);
         setIsDonorActive(data.is_donor_active || false);
         setExpoPushToken(data.expo_push_token || "");
         setPreferredAreas(data.preferred_areas || []);
+      }
+
+      // Fetch user badges
+      const { data: badgesData, error: badgesError } = await supabase
+        .from("user_badges")
+        .select(`
+          awarded_at,
+          badges (
+            id,
+            name,
+            icon_name
+          )
+        `)
+        .eq("user_id", session?.user.id)
+        .order("awarded_at", { ascending: false });
+
+      if (badgesData) {
+        const extractedBadges = badgesData.map((b: any) => b.badges);
+        setUserBadges(extractedBadges);
+
+        // Learning Modal Auto-Open Logic
+        const hasMasterBadge = extractedBadges.some(b => b.id === "onboarding_master");
+        if (!hasMasterBadge) {
+          const hasShownModal = await AsyncStorage.getItem("has_shown_learning_modal");
+          if (!hasShownModal) {
+            setLearningModalVisible(true);
+            await AsyncStorage.setItem("has_shown_learning_modal", "true");
+          }
+        }
       }
     } catch (error) {
       if (error instanceof Error) {
@@ -115,6 +176,12 @@ export default function ProfileScreen() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (session) {
+      fetchProfile();
+    }
+  }, [session]);
 
   const updateProfile = async () => {
     try {
@@ -134,15 +201,29 @@ export default function ProfileScreen() {
         full_name: fullName,
         phone,
         blood_type: bloodType,
+        age,
+        weight,
+        last_donation_date: lastDonationDate ? lastDonationDate.toISOString() : null,
         is_donor_active: isDonorActive,
         expo_push_token: currentPushToken,
         preferred_areas: preferredAreas,
         updated_at: new Date(),
       };
 
-      const { error } = await supabase.from("profiles").upsert(updates);
+      console.log("Sending updates:", JSON.stringify(updates, null, 2));
+      // Debug alert to help user verify the data
+      Alert.alert(
+        "Debugging Save",
+        `Sending ${updates.preferred_areas.length} areas: ${updates.preferred_areas.join(", ")}`
+      );
+
+      const { error } = await supabase
+        .from("profiles")
+        .update(updates)
+        .eq("id", session.user.id);
 
       if (error) {
+        console.error("Supabase error:", error);
         throw error;
       }
 
@@ -156,44 +237,20 @@ export default function ProfileScreen() {
     }
   };
 
-  const searchAreas = async (text: string) => {
-    setAreaQuery(text);
-    if (text.length < 3) {
-      setAreaPredictions([]);
-      setShowAreaPredictions(false);
-      return;
-    }
-
-    try {
-      const res = await fetch(
-        `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${text}&types=(regions)&key=${GOOGLE_API_KEY}`,
-      );
-      const data = await res.json();
-      if (data.status === "OK") {
-        setAreaPredictions(data.predictions);
-        setShowAreaPredictions(true);
-      }
-    } catch (error) {
-      console.error("Error fetching areas", error);
-    }
+  const showDatePicker = () => {
+    setDatePickerVisibility(true);
   };
 
-  const handleSelectArea = (description: string) => {
-    // Basic extraction, often "(regions)" gives "City, State, Country"
-    // We can just store the description or the primary_text.
-    // Assuming we want the first part, e.g., "Dhanmondi"
-    const simpleAreaName = description.split(",")[0].trim();
-
-    if (!preferredAreas.includes(simpleAreaName)) {
-      setPreferredAreas([...preferredAreas, simpleAreaName]);
-    }
-    setAreaQuery("");
-    setShowAreaPredictions(false);
+  const hideDatePicker = () => {
+    setDatePickerVisibility(false);
   };
 
-  const removeArea = (area: string) => {
-    setPreferredAreas(preferredAreas.filter((a) => a !== area));
+  const handleConfirm = (date: Date) => {
+    setLastDonationDate(date);
+    hideDatePicker();
   };
+  
+  // Area management moved to AreaSelectionModal
 
   async function registerForPushNotificationsAsync() {
     let token;
@@ -236,7 +293,7 @@ export default function ProfileScreen() {
   const shareProfile = async () => {
     try {
       if (storyRef.current) {
-        setLoading(true);
+        setIsSharing(true);
         // Add a small delay to ensure the offscreen view is fully rendered before capture
         setTimeout(async () => {
           try {
@@ -247,7 +304,7 @@ export default function ProfileScreen() {
             const isAvailable = await Sharing.isAvailableAsync();
             if (isAvailable) {
               await Sharing.shareAsync(uri, {
-                dialogTitle: "Share my Blood Donor Profile to Instagram",
+                dialogTitle: "Share my Blood Donor Profile",
               });
             } else {
               Alert.alert("Error", "Sharing is not available on this device");
@@ -255,13 +312,13 @@ export default function ProfileScreen() {
           } catch (captureErr) {
             console.error("Oops, snapshot failed", captureErr);
           } finally {
-            setLoading(false);
+            setIsSharing(false);
           }
         }, 500);
       }
     } catch (error) {
       console.error("Oops, sharing failed", error);
-      setLoading(false);
+      setIsSharing(false);
     }
   };
 
@@ -272,244 +329,358 @@ export default function ProfileScreen() {
         <Text style={styles.headerTitle}>Profile</Text>
       </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
-        {loading ? (
-          <ActivityIndicator
-            size="large"
-            color={COLORS.primary}
-            style={{ marginTop: 50 }}
-          />
-        ) : (
-          <View>
-            {/* Shareable Profile Card */}
-            <View style={styles.cardContainer} ref={cardRef}>
-              <LinearGradient
-                colors={["#1A1A1D", "#0B0C10"]} // Sleek dark card
-                style={styles.profileCard}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-              >
-                {/* Decorative background element */}
-                <View style={styles.decorativeCircle} />
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 10 : 0}
+      >
+        <ScrollView contentContainerStyle={styles.content}>
+          {loading ? (
+            <ActivityIndicator
+              size="large"
+              color={COLORS.primary}
+              style={{ marginTop: 50 }}
+            />
+          ) : (
+            <View>
+              {/* Shareable Profile Card */}
+              <View style={styles.cardContainer} ref={cardRef}>
+                <LinearGradient
+                  colors={["#1A1A1D", "#0B0C10"]} // Sleek dark card
+                  style={styles.profileCard}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                >
+                  {/* Decorative background element */}
+                  <View style={styles.decorativeCircle} />
 
-                <View style={styles.cardHeader}>
-                  <View style={styles.avatarBorder}>
-                    <View style={styles.avatarInner}>
-                      <Image
-                        source={require("../../assets/images/icons/cat.png")}
-                        style={{ width: 40, height: 40 }}
-                        resizeMode="contain"
-                      />
+                  <View style={styles.cardHeader}>
+                    <View style={styles.avatarBorder}>
+                      <View style={styles.avatarInner}>
+                        <Image
+                          source={require("../../assets/images/icons/cat.png")}
+                          style={{ width: 40, height: 40 }}
+                          resizeMode="contain"
+                        />
+                      </View>
                     </View>
-                  </View>
-                  <View style={styles.cardInfo}>
-                    <Text style={styles.cardName}>
-                      {fullName || "Anonymous Hero"}
-                    </Text>
-                    <Text style={styles.cardEmail}>{session?.user.email}</Text>
-                  </View>
-
-                  {bloodType ? (
-                    <View style={styles.bloodTypeContainer}>
-                      <Droplet
-                        size={14}
-                        color={COLORS.primary}
-                        fill={COLORS.primary}
-                        style={{ marginBottom: 4 }}
-                      />
-                      <Text style={styles.bloodTypeText}>{bloodType}</Text>
-                    </View>
-                  ) : null}
-                </View>
-
-                <View style={styles.badgesWrapper}>
-                  {isNewJoinee && (
-                    <View style={styles.badgeItem}>
-                      <CalendarRange size={16} color="#FFD700" />
-                      <Text style={styles.badgeLabel}>New Joinee</Text>
-                    </View>
-                  )}
-                  {isProfileComplete && (
-                    <View style={styles.badgeItem}>
-                      <BadgeCheck size={16} color="#00E5FF" />
-                      <Text style={styles.badgeLabel}>Verified Profile</Text>
-                    </View>
-                  )}
-                  {isDonorActive && (
-                    <View style={[styles.badgeItem, styles.activeDonorBadge]}>
-                      <Award size={16} color={COLORS.white} />
-                      <Text
-                        style={[
-                          styles.badgeLabel,
-                          { color: COLORS.white, fontWeight: "700" },
-                        ]}
-                      >
-                        Hero Donor
+                    <View style={styles.cardInfo}>
+                      <Text style={styles.cardName}>
+                        {fullName || "Anonymous Hero"}
+                      </Text>
+                      <Text style={styles.cardEmail}>
+                        {session?.user.email}
                       </Text>
                     </View>
-                  )}
-                </View>
 
-                <View style={styles.cardFooter}>
-                  <Text style={styles.brandText}>PulseThread</Text>
-                  <Text style={styles.memberText}>MEMBER CARD</Text>
-                </View>
-              </LinearGradient>
-            </View>
+                    {bloodType ? (
+                      <View style={styles.bloodTypeContainer}>
+                        <Droplet
+                          size={14}
+                          color={COLORS.primary}
+                          fill={COLORS.primary}
+                          style={{ marginBottom: 4 }}
+                        />
+                        <Text style={styles.bloodTypeText}>{bloodType}</Text>
+                      </View>
+                    ) : null}
+                  </View>
 
-            <TouchableOpacity style={styles.shareButton} onPress={shareProfile}>
-              <LinearGradient
-                colors={["#833ab4", "#fd1d1d", "#fcb045"]} // Instagram gradient
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={styles.shareButtonGradient}
-              >
-                <Share2 size={20} color={COLORS.white} />
-                <Text style={styles.shareButtonText}>
-                  Share to Instagram Story
-                </Text>
-              </LinearGradient>
-            </TouchableOpacity>
-
-            <View style={styles.formCard}>
-              <View style={styles.form}>
-                <View style={styles.inputGroup}>
-                  <Text style={styles.label}>Full Name</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={fullName}
-                    onChangeText={setFullName}
-                    placeholder="John Doe"
-                    placeholderTextColor={COLORS.darkGray}
-                  />
-                </View>
-
-                <View style={styles.inputGroup}>
-                  <Text style={styles.label}>Phone Number</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={phone}
-                    onChangeText={setPhone}
-                    placeholder="+1 234 567 890"
-                    placeholderTextColor={COLORS.darkGray}
-                    keyboardType="phone-pad"
-                  />
-                </View>
-
-                <View style={styles.inputGroup}>
-                  <Text style={styles.label}>Blood Type</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={bloodType}
-                    onChangeText={setBloodType}
-                    placeholder="O+"
-                    placeholderTextColor={COLORS.darkGray}
-                  />
-                </View>
-
-                <View style={styles.inputGroup}>
-                  <Text style={styles.label}>Donor Status</Text>
-                  <TouchableOpacity
-                    style={[
-                      styles.toggleButton,
-                      isDonorActive && styles.activeToggle,
-                    ]}
-                    onPress={() => setIsDonorActive(!isDonorActive)}
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={{ paddingHorizontal: SPACING.md }}
+                    style={{ marginBottom: SPACING.lg }}
                   >
-                    <Text
-                      style={[
-                        styles.toggleText,
-                        isDonorActive && styles.activeToggleText,
-                      ]}
-                    >
-                      {isDonorActive
-                        ? "Active Donor (Visible on Map)"
-                        : "Inactive (Hidden)"}
-                    </Text>
-                  </TouchableOpacity>
-                  <Text style={styles.helperText}>
-                    Enable this to appear to people requesting blood nearby.
-                  </Text>
-                </View>
-
-                {isDonorActive && (
-                  <View style={styles.inputGroup}>
-                    <Text style={styles.label}>Preferred Donation Areas</Text>
-                    <View style={styles.chipsContainer}>
-                      {preferredAreas.map((area) => (
-                        <View key={area} style={styles.areaChip}>
-                          <Text style={styles.areaChipText}>{area}</Text>
-                          <TouchableOpacity
-                            onPress={() => removeArea(area)}
-                            style={{ marginLeft: 4 }}
+                    <View style={[styles.badgesWrapper, { width: undefined, gap: 12 }]}>
+                      {userBadges.map((badge, idx) => (
+                        <View key={idx} style={[styles.badgeItem, idx === 0 && styles.activeDonorBadge]}>
+                          {getIconComponent(badge.icon_name, 16, idx === 0 ? COLORS.white : COLORS.primary)}
+                          <Text
+                            style={[
+                              styles.badgeLabel,
+                              idx === 0 && { color: COLORS.white, fontWeight: "700" },
+                            ]}
                           >
-                            <Text style={styles.areaChipClose}>×</Text>
-                          </TouchableOpacity>
+                            {badge.name}
+                          </Text>
                         </View>
                       ))}
                     </View>
+                  </ScrollView>
 
+                  <View style={styles.cardFooter}>
+                    <Text style={styles.brandText}>PulseThread</Text>
+                    <Text style={styles.memberText}>MEMBER CARD</Text>
+                  </View>
+                </LinearGradient>
+              </View>
+
+              <TouchableOpacity
+                style={styles.shareButton}
+                onPress={shareProfile}
+              >
+                <LinearGradient
+                  colors={[COLORS.primary, "#9B1B24"]} // App-themed red gradient
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.shareButtonGradient}
+                >
+                  <Share2 size={20} color={COLORS.white} />
+                  <Text style={styles.shareButtonText}>
+                    Share Profile to Social Media
+                  </Text>
+                </LinearGradient>
+              </TouchableOpacity>
+
+              <View style={styles.formCard}>
+                <View style={styles.form}>
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.label}>Full Name</Text>
                     <TextInput
                       style={styles.input}
-                      value={areaQuery}
-                      onChangeText={searchAreas}
-                      placeholder="Search area (e.g. Dhanmondi)"
+                      value={fullName}
+                      onChangeText={setFullName}
+                      placeholder="John Doe"
                       placeholderTextColor={COLORS.darkGray}
                     />
-
-                    {showAreaPredictions && (
-                      <View style={styles.predictionsList}>
-                        {areaPredictions.map((item) => (
-                          <TouchableOpacity
-                            key={item.place_id}
-                            style={styles.predictionItem}
-                            onPress={() => handleSelectArea(item.description)}
-                          >
-                            <Text
-                              style={styles.predictionText}
-                              numberOfLines={1}
-                            >
-                              {item.description}
-                            </Text>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                    )}
                   </View>
-                )}
 
-                <TouchableOpacity
-                  style={styles.saveButton}
-                  onPress={updateProfile}
-                  disabled={saving}
-                >
-                  {saving ? (
-                    <ActivityIndicator color={COLORS.white} />
-                  ) : (
-                    <View
-                      style={{
-                        flexDirection: "row",
-                        alignItems: "center",
-                        gap: 8,
-                      }}
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.label}>Phone Number</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={phone}
+                      onChangeText={setPhone}
+                      placeholder="+1 234 567 890"
+                      placeholderTextColor={COLORS.darkGray}
+                      keyboardType="phone-pad"
+                    />
+                  </View>
+
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.label}>Blood Type</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={bloodType}
+                      onChangeText={setBloodType}
+                      placeholder="O+"
+                      placeholderTextColor={COLORS.darkGray}
+                    />
+                  </View>
+
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.label}>Age</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={age ? String(age) : ""}
+                      onChangeText={(text) => setAge(Number(text))}
+                      placeholder="e.g. 25"
+                      placeholderTextColor={COLORS.darkGray}
+                      keyboardType="number-pad"
+                    />
+                  </View>
+
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.label}>Weight (kg)</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={weight ? String(weight) : ""}
+                      onChangeText={(text) => setWeight(Number(text))}
+                      placeholder="e.g. 70"
+                      placeholderTextColor={COLORS.darkGray}
+                      keyboardType="number-pad"
+                    />
+                  </View>
+
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.label}>Last Donation Date</Text>
+                    <TouchableOpacity
+                      style={styles.input}
+                      onPress={showDatePicker}
                     >
-                      <Save size={20} color={COLORS.white} />
-                      <Text style={styles.saveButtonText}>SAVE CHANGES</Text>
+                      <Text style={{color: lastDonationDate ? COLORS.text : COLORS.darkGray}}>
+                        {lastDonationDate
+                          ? lastDonationDate.toLocaleDateString()
+                          : "Select a date"}
+                      </Text>
+                    </TouchableOpacity>
+                    <DateTimePickerModal
+                      isVisible={isDatePickerVisible}
+                      mode="date"
+                      onConfirm={handleConfirm}
+                      onCancel={hideDatePicker}
+                    />
+                  </View>
+
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.label}>Donor Status</Text>
+                    <TouchableOpacity
+                      style={[
+                        styles.toggleButton,
+                        isDonorActive && styles.activeToggle,
+                      ]}
+                      onPress={() => setIsDonorActive(!isDonorActive)}
+                    >
+                      <Text
+                        style={[
+                          styles.toggleText,
+                          isDonorActive && styles.activeToggleText,
+                        ]}
+                      >
+                        {isDonorActive
+                          ? "Active Donor (Visible on Map)"
+                          : "Inactive (Hidden)"}
+                      </Text>
+                    </TouchableOpacity>
+                    <Text style={styles.helperText}>
+                      Enable this to appear to people requesting blood nearby.
+                    </Text>
+                  </View>
+
+                  {isDonorActive && (
+                    <View style={styles.inputGroup}>
+                      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: SPACING.sm }}>
+                        <Text style={styles.label}>Preferred Donation Areas</Text>
+                        <TouchableOpacity
+                          onPress={() => setAreaModalVisible(true)}
+                          style={styles.manageBtn}
+                        >
+                          <Text style={styles.manageBtnText}>Manage Areas</Text>
+                        </TouchableOpacity>
+                      </View>
+
+                      {preferredAreas.length === 0 ? (
+                        <TouchableOpacity
+                          style={styles.emptyAreasContainer}
+                          onPress={() => setAreaModalVisible(true)}
+                        >
+                          <MapPin size={24} color={COLORS.darkGray} />
+                          <Text style={styles.helperText}>No preferred areas added yet. Tap to manage.</Text>
+                        </TouchableOpacity>
+                      ) : (
+                        <View style={styles.areasList}>
+                          {preferredAreas.map((area) => (
+                            <View key={area} style={styles.areaListItem}>
+                              <MapPin size={16} color={COLORS.primary} />
+                              <Text style={styles.areaListItemText}>{area}</Text>
+                            </View>
+                          ))}
+                        </View>
+                      )}
                     </View>
                   )}
-                </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.saveButton}
+                    onPress={updateProfile}
+                    disabled={saving}
+                  >
+                    {saving ? (
+                      <ActivityIndicator color={COLORS.white} />
+                    ) : (
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: 8,
+                        }}
+                      >
+                        <Save size={20} color={COLORS.white} />
+                        <Text style={styles.saveButtonText}>SAVE CHANGES</Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              <View style={styles.infoLinksContainer}>
+                <Link href="/info/privacy" asChild>
+                  <TouchableOpacity style={styles.infoLink}>
+                    <Text style={styles.infoLinkText}>Privacy & Data Policy</Text>
+                    <ChevronRight size={20} color={COLORS.darkGray} />
+                  </TouchableOpacity>
+                </Link>
+                <Link href="/info/conduct" asChild>
+                  <TouchableOpacity style={styles.infoLink}>
+                    <Text style={styles.infoLinkText}>Code of Conduct</Text>
+                    <ChevronRight size={20} color={COLORS.darkGray} />
+                  </TouchableOpacity>
+                </Link>
+                <Link href="/info/about" asChild>
+                  <TouchableOpacity style={styles.infoLink}>
+                    <Text style={styles.infoLinkText}>About PulseThread</Text>
+                    <ChevronRight size={20} color={COLORS.darkGray} />
+                  </TouchableOpacity>
+                </Link>
+                <Link href="/info/legal" asChild>
+                  <TouchableOpacity style={styles.infoLink}>
+                    <Text style={styles.infoLinkText}>Legal & Liability</Text>
+                    <ChevronRight size={20} color={COLORS.darkGray} />
+                  </TouchableOpacity>
+                </Link>
+                <Link href="/info/developer" asChild>
+                  <TouchableOpacity style={styles.infoLink}>
+                    <Text style={styles.infoLinkText}>The Developer</Text>
+                    <ChevronRight size={20} color={COLORS.darkGray} />
+                  </TouchableOpacity>
+                </Link>
+                <Link href="/info/contributors" asChild>
+                  <TouchableOpacity style={styles.infoLink}>
+                    <Text style={styles.infoLinkText}>Contributors</Text>
+                    <ChevronRight size={20} color={COLORS.darkGray} />
+                  </TouchableOpacity>
+                </Link>
+                <Link href="/info/supporters" asChild>
+                  <TouchableOpacity style={styles.infoLink}>
+                    <Text style={styles.infoLinkText}>Supporters</Text>
+                    <ChevronRight size={20} color={COLORS.darkGray} />
+                  </TouchableOpacity>
+                </Link>
               </View>
             </View>
+          )}
+
+          <TouchableOpacity
+            style={styles.logoutButton}
+            onPress={() => signOut()}
+          >
+            <LogOut size={20} color={COLORS.error} />
+            <Text style={styles.logoutText}>Log Out</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.learningButton}
+            onPress={() => setLearningModalVisible(true)}
+          >
+            <Text style={styles.learningButtonText}>Revisit Learning Modules</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </KeyboardAvoidingView>
+
+      {/* Sharing Overlay */}
+      {isSharing && (
+        <View style={styles.sharingOverlay}>
+          <View style={styles.sharingLoaderContent}>
+            <ActivityIndicator size="large" color={COLORS.primary} />
+            <Text style={styles.sharingText}>Generating Donor Card...</Text>
           </View>
-        )}
+        </View>
+      )}
 
-        <TouchableOpacity style={styles.logoutButton} onPress={() => signOut()}>
-          <LogOut size={20} color={COLORS.error} />
-          <Text style={styles.logoutText}>Log Out</Text>
-        </TouchableOpacity>
-      </ScrollView>
+      <LearningModal
+        isVisible={isLearningModalVisible}
+        onClose={() => setLearningModalVisible(false)}
+      />
 
-      {/* Hidden Instagram Story View (9:16 aspect ratio 1080x1920) */}
+      <AreaSelectionModal
+        isVisible={isAreaModalVisible}
+        onClose={() => setAreaModalVisible(false)}
+        preferredAreas={preferredAreas}
+        onUpdateAreas={setPreferredAreas}
+      />
+
+      {/* Hidden Shareable Profile View (9:16 aspect ratio 1080x1920) */}
       <View style={styles.hiddenStoryContainer} pointerEvents="none">
         <View ref={storyRef} collapsable={false} style={styles.storyCanvas}>
           <LinearGradient
@@ -521,6 +692,11 @@ export default function ProfileScreen() {
               <Text style={styles.storyTitle}>I am on PulseThread</Text>
               <Text style={styles.storySubtitle}>
                 Ready to serve the community.
+              </Text>
+              <Text style={styles.storyDescription}>
+                PulseThread is a community-driven platform connecting blood
+                donors with those in urgent need. Join us to save lives
+                together.
               </Text>
             </View>
 
@@ -606,17 +782,21 @@ export default function ProfileScreen() {
                     </Text>
                   </View>
                 ) : null}
-
                 <View
-                  style={[
-                    styles.badgesWrapper,
-                    { gap: 16, justifyContent: "center", marginBottom: 20 },
-                  ]}
+                  style={{
+                    flexDirection: "row",
+                    flexWrap: "wrap",
+                    gap: 16,
+                    justifyContent: "center",
+                    marginBottom: 20,
+                  }}
                 >
-                  {isNewJoinee && (
+                  {userBadges.slice(0, 3).map((badge, idx) => (
                     <View
+                      key={idx}
                       style={[
                         styles.badgeItem,
+                        idx === 0 && styles.activeDonorBadge,
                         {
                           paddingHorizontal: 24,
                           paddingVertical: 14,
@@ -624,56 +804,18 @@ export default function ProfileScreen() {
                         },
                       ]}
                     >
-                      <CalendarRange size={24} color="#FFD700" />
-                      <Text style={[styles.badgeLabel, { fontSize: 20 }]}>
-                        New Joinee
-                      </Text>
-                    </View>
-                  )}
-                  {isProfileComplete && (
-                    <View
-                      style={[
-                        styles.badgeItem,
-                        {
-                          paddingHorizontal: 24,
-                          paddingVertical: 14,
-                          borderRadius: 30,
-                        },
-                      ]}
-                    >
-                      <BadgeCheck size={24} color="#00E5FF" />
-                      <Text style={[styles.badgeLabel, { fontSize: 20 }]}>
-                        Verified Profile
-                      </Text>
-                    </View>
-                  )}
-                  {isDonorActive && (
-                    <View
-                      style={[
-                        styles.badgeItem,
-                        styles.activeDonorBadge,
-                        {
-                          paddingHorizontal: 24,
-                          paddingVertical: 14,
-                          borderRadius: 30,
-                        },
-                      ]}
-                    >
-                      <Award size={24} color={COLORS.white} />
+                      {getIconComponent(badge.icon_name, 24, idx === 0 ? COLORS.white : COLORS.primary)}
                       <Text
                         style={[
                           styles.badgeLabel,
-                          {
-                            color: COLORS.white,
-                            fontWeight: "700",
-                            fontSize: 20,
-                          },
+                          { fontSize: 20 },
+                          idx === 0 && { color: COLORS.white, fontWeight: "700" },
                         ]}
                       >
-                        Hero Donor
+                        {badge.name}
                       </Text>
                     </View>
-                  )}
+                  ))}
                 </View>
 
                 <View
@@ -730,6 +872,28 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.background,
   },
+  sharingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(11, 12, 16, 0.85)", // Dark semi-transparent
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 999,
+  },
+  sharingLoaderContent: {
+    backgroundColor: "#1A1A1D",
+    padding: SPACING.xl,
+    borderRadius: 24,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+    ...SHADOWS.floating,
+  },
+  sharingText: {
+    color: COLORS.white,
+    marginTop: SPACING.md,
+    fontSize: TYPOGRAPHY.sizes.md,
+    fontWeight: "700",
+  },
   header: {
     paddingTop: Platform.OS === "web" ? 20 : 60,
     paddingBottom: SPACING.lg,
@@ -782,6 +946,15 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "rgba(255,255,255,0.8)",
     textAlign: "center",
+    marginBottom: 24,
+  },
+  storyDescription: {
+    fontSize: 28,
+    fontWeight: "400",
+    color: "rgba(255,255,255,0.6)",
+    textAlign: "center",
+    paddingHorizontal: 80,
+    lineHeight: 40,
   },
   qrSection: {
     marginTop: 100,
@@ -1035,53 +1208,80 @@ const styles = StyleSheet.create({
     marginTop: SPACING.xxl,
     padding: SPACING.md,
   },
+  infoLinksContainer: {
+    marginTop: SPACING.xl,
+    backgroundColor: COLORS.white,
+    borderRadius: SPACING.md,
+    padding: SPACING.md,
+    ...SHADOWS.card,
+  },
+  infoLink: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: SPACING.md,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.gray,
+  },
+  infoLinkText: {
+    fontSize: TYPOGRAPHY.sizes.md,
+    color: COLORS.text,
+  },
   logoutText: {
     color: COLORS.error,
     fontWeight: "bold",
     fontSize: TYPOGRAPHY.sizes.md,
   },
-  // New Styles
-  chipsContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: SPACING.sm,
-    marginBottom: SPACING.sm,
+  learningButton: {
+    marginTop: SPACING.lg,
+    padding: SPACING.md,
+    backgroundColor: COLORS.secondary,
+    borderRadius: SPACING.sm,
+    alignItems: "center",
   },
-  areaChip: {
+  learningButtonText: {
+    color: COLORS.primary,
+    fontWeight: "bold",
+    fontSize: TYPOGRAPHY.sizes.md,
+  },
+  // Area Selection Styles
+  manageBtn: {
+    backgroundColor: COLORS.secondary,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  manageBtnText: {
+    color: COLORS.primary,
+    fontSize: TYPOGRAPHY.sizes.xs,
+    fontWeight: "700",
+  },
+  emptyAreasContainer: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: COLORS.secondary,
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 4,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: COLORS.primary,
-  },
-  areaChipText: {
-    color: COLORS.primary,
-    fontSize: TYPOGRAPHY.sizes.sm,
-    fontWeight: "500",
-  },
-  areaChipClose: {
-    color: COLORS.primary,
-    fontSize: 16,
-    fontWeight: "bold",
-  },
-  predictionsList: {
-    marginTop: SPACING.xs,
-    backgroundColor: COLORS.white,
+    gap: SPACING.md,
+    backgroundColor: COLORS.gray,
+    padding: SPACING.lg,
     borderRadius: SPACING.sm,
     borderWidth: 1,
-    borderColor: COLORS.gray,
-    maxHeight: 150,
+    borderColor: COLORS.darkGray + "20",
+    marginTop: SPACING.xs,
   },
-  predictionItem: {
+  areasList: {
+    gap: SPACING.sm,
+    marginTop: SPACING.xs,
+  },
+  areaListItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.sm,
+    backgroundColor: COLORS.gray,
     padding: SPACING.md,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.gray,
+    borderRadius: SPACING.sm,
   },
-  predictionText: {
-    fontSize: TYPOGRAPHY.sizes.sm,
+  areaListItemText: {
+    fontSize: TYPOGRAPHY.sizes.md,
     color: COLORS.text,
+    fontWeight: "500",
   },
 });
