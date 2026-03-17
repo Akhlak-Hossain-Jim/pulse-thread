@@ -44,6 +44,12 @@ export default function AuthenticatedLayout() {
         }}
       />
       <Tabs.Screen 
+        name="info/[id]" 
+        options={{
+            href: null,
+        }}
+      />
+      <Tabs.Screen 
         name="profile" 
         options={{
             title: "Profile",
