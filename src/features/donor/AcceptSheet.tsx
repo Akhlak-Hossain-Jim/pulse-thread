@@ -129,7 +129,7 @@ export const AcceptSheet = ({
       <View style={styles.overlay}>
         <View style={styles.sheet}>
           <View style={styles.header}>
-            <Text style={styles.title}>Emergency Request</Text>
+            <Text style={styles.title}>{request.scheduled_datetime ? "Scheduled Request" : "Emergency Request"}</Text>
             <TouchableOpacity onPress={onClose}>
               <X color={COLORS.text} size={24} />
             </TouchableOpacity>
@@ -150,6 +150,15 @@ export const AcceptSheet = ({
               <Text style={styles.label}>Location</Text>
               <Text style={styles.value}>{request.hospital_name}</Text>
             </View>
+
+            {request.scheduled_datetime && (
+              <View style={styles.infoRow}>
+                <Text style={styles.label}>Scheduled Time</Text>
+                <Text style={styles.value}>
+                  {new Date(request.scheduled_datetime).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
+                </Text>
+              </View>
+            )}
 
             <TouchableOpacity
               style={styles.button}
