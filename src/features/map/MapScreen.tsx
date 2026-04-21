@@ -165,22 +165,29 @@ export const MapScreen = () => {
     if (!session) return;
     
     // Check for active request
-    const { data: requestData } = await supabase
+    const { data: requestData, error: reqErr } = await supabase
         .from('requests')
         .select('*')
         .eq('requester_id', session.user.id)
         .in('status', ['PENDING', 'ACCEPTED'])
+        .order('created_at', { ascending: false })
+        .limit(1)
         .maybeSingle(); 
+        
+    if (reqErr) console.error("Error fetching active request:", reqErr);
     
     setMyActiveRequest(requestData); // Clear if null
 
-    // Check for active donation
-    const { data: donationData } = await supabase
+    const { data: donationData, error: donErr } = await supabase
         .from('donations')
         .select('*, request:requests(*)')
         .eq('donor_id', session.user.id)
         .in('status', ['EN_ROUTE', 'ARRIVED', 'MATCHED'])
+        .order('created_at', { ascending: false })
+        .limit(1)
         .maybeSingle();
+        
+    if (donErr) console.error("Error fetching active donation:", donErr);
     
     setMyActiveDonation(donationData); // Clear if null
   };
@@ -350,13 +357,17 @@ export const MapScreen = () => {
                 // Don't show my own requests as "Donor targets"
                 if (req.requester_id === session?.user.id) return null;
 
+                const scheduleText = req.scheduled_datetime 
+                    ? `Scheduled for: ${new Date(req.scheduled_datetime).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}`
+                    : "Actively looking for now";
+
                 return (
                     <MapMarker
                         key={req.id}
                         coordinate={{ latitude, longitude }}
                         type="request"
                         title={`${req.blood_type} Needed`}
-                        description={req.hospital_name}
+                        description={`${req.hospital_name}\n${scheduleText}`}
                         onPress={() => setSelectedRequest(req)}
                     />
                 );
