@@ -1,3 +1,21 @@
+## v0.0.9 — April 22, 2026
+
+**Scheduling, Smart Search & Donor Controls**
+
+Smarter requests, better communication, and improved area search.
+
+- Schedule requests for a future date
+- Instant requests show actively looking label
+- Area search scoped to your country
+- Drop a pin to set donation areas
+- Area shown before hospital name on cards
+- Delete pending requests with no responders
+- Contact info and tap-to-call for donors & requesters
+- Map button fix for active users
+- Bug fixes and stability improvements
+
+---
+
 # What's New in v0.0.6
 
 - 🌟 New interactive welcome onboarding.
