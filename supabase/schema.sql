@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS public.requests (
   location geography(POINT) NOT NULL,
   urgency text DEFAULT 'Standard',
   component_type text DEFAULT 'Whole Blood',
+  scheduled_datetime timestamp with time zone,
   status request_status DEFAULT 'PENDING',
   created_at timestamp with time zone DEFAULT timezone('utc'::text, now())
 );
