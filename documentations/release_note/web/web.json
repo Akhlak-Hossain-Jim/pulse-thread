@@ -1,0 +1,265 @@
+[
+  {
+    "version": "0.0.9-alpha",
+    "releaseDate": "2026-04-22",
+    "title": "Scheduling, Smart Requests & Donor Controls",
+    "summary": "v0.0.9 delivers a major workflow upgrade for both blood requesters and donors, introducing request scheduling, better donor-requester communication, sharper map contextual actions, greater requester control over their own requests, and a significantly smarter preferred area selection experience for donors.",
+    "highlights": [
+      "Blood requests can now be scheduled for a future date (1–30 days ahead) or broadcast as an immediate 'Actively looking for now' request",
+      "Requesters can delete their own pending requests when there are no active responders",
+      "Both requesters and donors can now see each other's contact info with tap-to-call support",
+      "Preferred area search now auto-restricts to the user's country and correctly surfaces neighbourhoods like Dhanmondi and Mirpur",
+      "Donors can now drop a pin on a map to select a preferred donation area without typing"
+    ],
+    "sections": [
+      {
+        "category": "Blood Request Scheduling",
+        "items": [
+          {
+            "title": "Instant & Scheduled Request Modes",
+            "description": "Requesters now choose between 'Instant' (actively looking right now) or 'Scheduled' (a future date and time) when creating a blood request. A native date/time picker enforces a minimum of 1 day and a maximum of 30 days into the future, preventing past or far-future bookings. The 30-day cap is controlled by a single constant in RequestSheet.tsx for easy future adjustment."
+          },
+          {
+            "title": "Map & Acceptance Sheet Display",
+            "description": "Instant requests show 'Actively looking for now' on the map marker callout. Scheduled requests display the exact date and time instead. The donor's acceptance sheet also reflects the scheduled time for future-dated requests, making the commitment clear before a donor accepts."
+          },
+          {
+            "title": "Database Schema Update",
+            "description": "A new `scheduled_datetime` (timestamp with time zone) column was added to the `public.requests` table. The migration `ALTER TABLE public.requests ADD COLUMN scheduled_datetime timestamp with time zone;` must be run once in the Supabase dashboard to enable this feature."
+          }
+        ]
+      },
+      {
+        "category": "Requester Controls",
+        "items": [
+          {
+            "title": "Delete Pending Request",
+            "description": "Requesters can now delete their own pending requests from the Request Details screen. The delete button is only shown when the request status is PENDING and there are zero active (non-cancelled) responses. If any donor has responded, the button is hidden — the requester or donor must cancel the response first. A confirmation dialog prevents accidental deletion, and the flow cleans up any associated donation records before removing the request to avoid foreign key constraint failures."
+          }
+        ]
+      },
+      {
+        "category": "Donor-Requester Communication",
+        "items": [
+          {
+            "title": "Mutual Contact Visibility",
+            "description": "Both sides of a donation now have access to each other's contact information. The requester's verification sheet displays the responding donor's phone number alongside their name and status. The donor's acceptance sheet shows the requester's name and phone number. This allows real-world coordination (calling ahead to confirm) before the donor sets off."
+          },
+          {
+            "title": "Tap-to-Call Phone Numbers",
+            "description": "All phone numbers displayed in the app are now tappable. Tapping a number triggers a native tel: URL, launching the device's phone dialler pre-filled with the number. An error alert is shown if the device does not support calling (e.g., simulators)."
+          }
+        ]
+      },
+      {
+        "category": "Map Experience",
+        "items": [
+          {
+            "title": "Contextual Action Button Fix",
+            "description": "The floating action button on the map screen previously failed to show the correct action for users with an active request or donation response. The fix correctly prioritises: if the user has an active (PENDING) request, they see 'Manage My Request'; if they have an accepted donation response, they see 'View My Response'; otherwise the standard 'Create Request' button is shown."
+          }
+        ]
+      },
+      {
+        "category": "Preferred Area Selection",
+        "items": [
+          {
+            "title": "Country-Restricted Search",
+            "description": "The preferred area search in AreaSelectionModal now automatically determines the user's country on load by reverse-geocoding their GPS position via the Google Geocoding API. The resulting 2-letter country code is injected into every subsequent Places Autocomplete request, ensuring results are scoped to the user's country and removing foreign matches."
+          },
+          {
+            "title": "Sub-locality Focused Filtering",
+            "description": "The previous Google Places query used the rigid 'types=(regions)' parameter, which frequently failed to return neighbourhood-level results like Dhanmondi, Mirpur, and Banani. This has been replaced with a broader query followed by client-side filtering that explicitly excludes precision types (street_address, route, premise, subpremise, plus_code, point_of_interest, establishment). Neighbourhoods and localities now appear reliably."
+          },
+          {
+            "title": "Pick from Map (Drop-Pin Feature)",
+            "description": "Donors can now tap 'Pick from Map' beneath the search bar to open a full-screen MapView with a centre pin. As the map is panned, real-time reverse geocoding resolves the pin position to the nearest neighbourhood, sublocality, or locality (prioritised in that order) and displays it as the selected area name. Confirming saves the resolved name directly into preferredAreas, ensuring consistent formatting (e.g. 'Dhanmondi' rather than a street-level address)."
+          }
+        ]
+      },
+      {
+        "category": "UI & UX Improvements",
+        "items": [
+          {
+            "title": "Area-First Location Display on Request Cards",
+            "description": "Request cards in the Blood Requests tab now display the area before the hospital name (e.g., 'Dhanmondi, Labaid Hospital'). This gives donors an immediate geographic sense of where blood is needed before reading the full address."
+          },
+          {
+            "title": "RequestSheet ScrollView & Modal Height",
+            "description": "The blood request creation modal was expanded to a ScrollView to prevent content being cut off on smaller screens, particularly after adding the new scheduling controls. The modal is also constrained to 90% of screen height for a consistent visual footprint."
+          }
+        ]
+      }
+    ],
+    "knownLimitations": [
+      "The country is not stored as a separate field on the requests table. The area-first display shows the area field but cannot append a country label without a further migration.",
+      "Scheduling validation is calculated in the device's local time zone; cross-timezone edge cases are not yet handled.",
+      "Deletion of requests with DONATED responses is not permitted — the donor would need to cancel first, which is not possible after a successful donation. A 'Mark as Complete' flow for fulfilled requests is deferred to a future release.",
+      "The map drop-pin feature requires an active internet connection for reverse geocoding — offline area selection is not supported."
+    ],
+    "technicalNotes": {
+      "platform": "React Native (Expo SDK 52)",
+      "router": "Expo Router v4",
+      "backend": "Supabase (PostgreSQL + PostGIS)",
+      "buildSystem": "EAS Build",
+      "architecture": "New dependency react-native-modal-datetime-picker added for native date/time picking. Delete flow performs a cascade-safe donations cleanup before removing the parent request row. Area search replaced types=(regions) with client-side prediction filtering for reliable sub-locality results. Google Geocoding API used on modal mount to dynamically resolve and cache the user's country code for search scoping."
+    }
+  },
+  {
+    "version": "0.0.8-alpha",
+    "releaseDate": "2026-04-20",
+    "title": "Location Intelligence, Verified Facilities & Social Sharing",
+    "summary": "v0.0.8 introduces significant enhancements to location intelligence, social connectivity, and overall system reliability, focusing on seamless offline continuity and strict data integrity for hospitals and donation zones.",
+    "highlights": [
+      "Persistent location fallback using AsyncStorage — the app stays useful even when GPS is unavailable",
+      "Strict Google Places integration for hospital selection with a 1km radius verification check",
+      "Social sharing generalised from Instagram-only to any platform (Facebook, WhatsApp, Twitter, etc.)",
+      "Preferred donation areas moved to the central Profile page for cleaner profile management",
+      "Fully consolidated and idempotent schema.sql for reliable database deployment"
+    ],
+    "sections": [
+      {
+        "category": "Location & Map",
+        "items": [
+          {
+            "title": "Persistent Location Fallback",
+            "description": "The app now locally persists the last known active location using AsyncStorage. If a fresh GPS lock fails on launch, the app automatically restores the last active position. As a final fallback, a standard global coordinate ensures core features remain functional."
+          },
+          {
+            "title": "Instant Street Address on Current Location",
+            "description": "When a requester selects 'Current Location', real-time reverse geocoding via Google Maps API now provides immediate street-level confirmation (e.g., 'Road 10, Banani') rather than raw coordinates."
+          },
+          {
+            "title": "Automatic Area Extraction",
+            "description": "Geographic areas are now automatically detected from the selected hospital location and categorised for better matching with local donors who have listed those areas as preferred zones."
+          }
+        ]
+      },
+      {
+        "category": "Hospital Verification",
+        "items": [
+          {
+            "title": "Strict Facility Validation",
+            "description": "The blood request flow now blocks free-text hospital names entirely. Requesters must select a verified medical facility from Google Places search suggestions or verify their physical presence via GPS at an actual hospital."
+          },
+          {
+            "title": "Increased Verification Radius",
+            "description": "The proximity check for GPS-based verification increased from a tight threshold to a 1km radius, accounting for large hospital campuses and typical GPS variance. Verification now also recognises clinics, medical centres, and specialised hospitals to reduce false negatives."
+          }
+        ]
+      },
+      {
+        "category": "Social Sharing",
+        "items": [
+          {
+            "title": "Universal Cross-Platform Sharing",
+            "description": "The donor card sharing feature was generalised from Instagram-only to any installed app via the system share sheet (Facebook, Twitter, WhatsApp, Signal, etc.). Platform-specific branding was replaced with a sleek app-themed red gradient design."
+          },
+          {
+            "title": "Sharing UX Stability",
+            "description": "Introduced a dedicated dark-themed sharing overlay with an ActivityIndicator. The main profile content remains fully rendered beneath the loader, eliminating the 'vanishing UI' issue during high-fidelity card generation."
+          }
+        ]
+      },
+      {
+        "category": "Profile Management",
+        "items": [
+          {
+            "title": "Preferred Areas Moved to Profile",
+            "description": "The 'Preferred Donation Areas' setting was relocated from the request broadcast sheet to the central Profile page. This eliminates confusion between the request flow (where blood is needed) and profile settings (where a donor is available)."
+          },
+          {
+            "title": "Verified Donor Areas",
+            "description": "Preferred donation zones must now be selected from official Google Places predictions. Free-text area names are no longer accepted, ensuring all zones are valid and searchable locations."
+          }
+        ]
+      }
+    ],
+    "knownLimitations": [
+      "Social sharing is not available on simulators — a physical device is required.",
+      "Hospital verification may fail at facilities not indexed in Google Places."
+    ],
+    "technicalNotes": {
+      "platform": "React Native (Expo)",
+      "router": "Expo Router",
+      "backend": "Supabase (PostgreSQL + PostGIS)",
+      "buildSystem": "EAS Build",
+      "architecture": "Fully consolidated database migrations into a robust, idempotent schema.sql. Enhanced AsyncStorage integration in locationStore. Advanced Google Maps Geocoding and Place Details API usage for address resolution and validation."
+    }
+  },
+  {
+    "version": "0.0.6-alpha",
+    "releaseDate": "2026-04-08",
+    "title": "The Hero Journey — Onboarding, Badges & Learning",
+    "summary": "v0.0.6 focuses on the 'Hero Journey' — making it easier for new users to join PulseThread, learn the platform, and be recognised for their life-saving contributions through a new badge and gamification system.",
+    "highlights": [
+      "New dynamic swipeable welcome onboarding replaces the static landing page",
+      "Full badge and achievement system awarded automatically via database triggers",
+      "Expanded profiles with health metrics (age, weight) and donation eligibility tracking",
+      "Interactive learning modules with YouTube video support and badge rewards",
+      "Central info hub for Privacy, Conduct, About, and Contributor pages"
+    ],
+    "sections": [
+      {
+        "category": "Onboarding",
+        "items": [
+          {
+            "title": "Dynamic Welcome Slider",
+            "description": "Replaced the static landing page with a swipeable welcome slider explaining how PulseThread connects donors and recipients. New account creation now requires email verification to maintain community trust."
+          }
+        ]
+      },
+      {
+        "category": "User Profiles",
+        "items": [
+          {
+            "title": "Health Metrics & Eligibility Tracking",
+            "description": "Users can now record Age and Weight on their profiles. A 'Last Donated' date tracker lets donors know exactly when they next become eligible to donate. Preferred areas remain text-based and non-precise to protect user location privacy."
+          }
+        ]
+      },
+      {
+        "category": "Gamification",
+        "items": [
+          {
+            "title": "Dynamic Badge System",
+            "description": "A fully dynamic badge system awards achievements in real time via Supabase database triggers. Badge types include: Verified Hero (profile setup), Hero Donor (active donor status), Life Saver (first successful donation), Community Scholar (learning module completion), and Onboarding Master (full walkthrough completed). Badges are rendered on the Profile Card and are included in the social share image."
+          }
+        ]
+      },
+      {
+        "category": "Education",
+        "items": [
+          {
+            "title": "Interactive Learning Modules",
+            "description": "A new Learning Modal guides users through three modules: how to request blood, what to expect during donation, and app policies and liability. Each module supports embedded YouTube video links and awards a badge on completion. Completing all three unlocks the Onboarding Master badge."
+          }
+        ]
+      },
+      {
+        "category": "Infrastructure",
+        "items": [
+          {
+            "title": "Info Hub & Policy Engine",
+            "description": "One central hub provides access to Privacy Policy, Code of Conduct, About PulseThread, Legal & Liability, Developer, Contributors, and Supporters pages — all rendered as dynamic in-app screens."
+          },
+          {
+            "title": "Map & Hospital Accuracy",
+            "description": "Circular map markers now include a directional tail for precise coordinate indication. Hospital proximity checks were introduced to validate requests are being made from legitimate medical facilities."
+          }
+        ]
+      }
+    ],
+    "knownLimitations": [
+      "Location intelligence and hospital verification are basic in this version — significantly improved in v0.0.8.",
+      "Social sharing is Instagram-only in this version — generalised to all platforms in v0.0.8."
+    ],
+    "technicalNotes": {
+      "platform": "React Native (Expo)",
+      "router": "Expo Router",
+      "backend": "Supabase (PostgreSQL) with event-driven SQL triggers for badge awards",
+      "buildSystem": "EAS Build",
+      "architecture": "AsyncStorage used for onboarding persistence. Badge system implemented as SECURITY DEFINER SQL functions to bypass RLS on insert."
+    }
+  }
+]
