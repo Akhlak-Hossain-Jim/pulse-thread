@@ -78,7 +78,7 @@ export default function RequestsScreen() {
       <View style={styles.cardContent}>
         <View style={styles.infoRow}>
             <MapPin size={16} color={COLORS.darkGray} />
-            <Text style={styles.infoText}>{item.hospital_name || 'Unknown Hospital'}</Text>
+            <Text style={styles.infoText}>{item.area ? `${item.area}, ${item.hospital_name || 'Unknown Address'}` : item.hospital_name || 'Unknown Hospital'}</Text>
         </View>
         <View style={styles.infoRow}>
             <Calendar size={16} color={COLORS.darkGray} />
