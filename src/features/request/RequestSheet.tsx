@@ -1,5 +1,5 @@
 import { useRouter } from "expo-router";
-import { ArrowLeft, MapPin, Navigation, X } from "lucide-react-native";
+import { ArrowLeft, MapPin, Navigation, X, Calendar } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -14,6 +14,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import DateTimePickerModal from "react-native-modal-datetime-picker";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { COLORS, SHADOWS, SPACING, TYPOGRAPHY } from "../../constants/theme";
 import { useAuth } from "../../context/AuthProvider";
@@ -55,6 +56,11 @@ export const RequestSheet = ({
   const [predictions, setPredictions] = useState<any[]>([]);
   const [showPredictions, setShowPredictions] = useState(false);
   const [selectedPlace, setSelectedPlace] = useState<any>(null);
+
+  // Scheduling State
+  const [isScheduled, setIsScheduled] = useState(false);
+  const [scheduledDate, setScheduledDate] = useState<Date | null>(null);
+  const [isDatePickerVisible, setDatePickerVisibility] = useState(false);
 
 
   // No longer using preferred areas in request flow
@@ -354,6 +360,7 @@ export const RequestSheet = ({
         urgency,
         component_type: componentType,
         status: "PENDING",
+        scheduled_datetime: isScheduled && scheduledDate ? scheduledDate.toISOString() : null,
       });
 
       if (error) throw error;
@@ -368,6 +375,8 @@ export const RequestSheet = ({
       setComponentType("Whole Blood");
       setStep(1);
       setSelectedPlace(null);
+      setIsScheduled(false);
+      setScheduledDate(null);
       onClose();
     } catch (error: any) {
       PlatformAlert.alert("Error", error.message);
@@ -381,6 +390,13 @@ export const RequestSheet = ({
       PlatformAlert.alert(
         "Missing Info",
         "Please select blood type and units.",
+      );
+      return;
+    }
+    if (isScheduled && !scheduledDate) {
+      PlatformAlert.alert(
+        "Missing Info",
+        "Please select a valid scheduled date and time.",
       );
       return;
     }
@@ -412,6 +428,7 @@ export const RequestSheet = ({
             styles.sheet,
             {
               height: showPredictions ? "80%" : "auto",
+              maxHeight: "90%",
               paddingBottom: insets.bottom + SPACING.lg,
             },
           ]}
@@ -434,9 +451,9 @@ export const RequestSheet = ({
             </TouchableOpacity>
           </View>
 
-          <View style={[styles.form, { flex: showPredictions ? 1 : 0 }]}>
+          <View style={[styles.form, { flex: showPredictions ? 1 : undefined, flexShrink: 1 }]}>
             {step === 1 ? (
-              <>
+              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: SPACING.md }}>
                 <Text style={styles.label}>Blood Type</Text>
                 <View style={styles.chipsContainer}>
                   {BLOOD_TYPES.map((type) => (
@@ -485,7 +502,7 @@ export const RequestSheet = ({
 
                 <Text style={styles.label}>Units Needed</Text>
                 <TextInput
-                  style={styles.input}
+                  style={[styles.input, { marginBottom: SPACING.md }]}
                   value={units}
                   onChangeText={setUnits}
                   keyboardType="numeric"
@@ -523,13 +540,72 @@ export const RequestSheet = ({
                   ))}
                 </View>
 
+                <Text style={styles.label}>Request Timing</Text>
+                <View style={styles.urgencyContainer}>
+                  {[
+                    { id: 'instant', label: 'Instant' },
+                    { id: 'scheduled', label: 'Schedule' }
+                  ].map((option) => (
+                    <TouchableOpacity
+                      key={option.id}
+                      style={[
+                        styles.urgencyButton,
+                        (!isScheduled && option.id === 'instant') || (isScheduled && option.id === 'scheduled')
+                          ? styles.activeUrgencyButton
+                          : null,
+                      ]}
+                      onPress={() => setIsScheduled(option.id === 'scheduled')}
+                    >
+                      <Text
+                        style={[
+                          styles.urgencyText,
+                          (!isScheduled && option.id === 'instant') || (isScheduled && option.id === 'scheduled')
+                            ? styles.activeUrgencyText
+                            : null,
+                        ]}
+                      >
+                        {option.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                {isScheduled && (
+                  <>
+                    <Text style={styles.label}>Scheduled Date & Time</Text>
+                    <TouchableOpacity
+                      style={[styles.input, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.md }]}
+                      onPress={() => setDatePickerVisibility(true)}
+                    >
+                      <Text style={{ color: scheduledDate ? COLORS.text : COLORS.darkGray, fontSize: TYPOGRAPHY.sizes.md }}>
+                        {scheduledDate 
+                          ? scheduledDate.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) 
+                          : "Select Date & Time"}
+                      </Text>
+                      <Calendar color={COLORS.primary} size={20} />
+                    </TouchableOpacity>
+
+                    <DateTimePickerModal
+                      isVisible={isDatePickerVisible}
+                      mode="datetime"
+                      onConfirm={(date) => {
+                        setScheduledDate(date);
+                        setDatePickerVisibility(false);
+                      }}
+                      onCancel={() => setDatePickerVisibility(false)}
+                      minimumDate={new Date(Date.now() + 24 * 60 * 60 * 1000)}
+                      maximumDate={new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)}
+                    />
+                  </>
+                )}
+
                 <TouchableOpacity
                   style={styles.button}
                   onPress={handleNextStep}
                 >
                   <Text style={styles.buttonText}>NEXT</Text>
                 </TouchableOpacity>
-              </>
+              </ScrollView>
             ) : (
               <>
                 <Text style={styles.label}>Hospital / Location</Text>
