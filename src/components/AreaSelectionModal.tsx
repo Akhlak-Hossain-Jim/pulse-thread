@@ -1,5 +1,5 @@
-import { MapPin, Search, X } from "lucide-react-native";
-import React, { useState } from "react";
+import { MapPin, Search, X, Map as MapIcon } from "lucide-react-native";
+import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -10,8 +10,10 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import MapView from "react-native-maps";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { COLORS, SHADOWS, SPACING, TYPOGRAPHY } from "../constants/theme";
+import { useLocationStore } from "../store/locationStore";
 
 interface AreaSelectionModalProps {
   isVisible: boolean;
@@ -29,9 +31,38 @@ export const AreaSelectionModal = ({
   onUpdateAreas,
 }: AreaSelectionModalProps) => {
   const insets = useSafeAreaInsets();
+  const { location } = useLocationStore();
   const [query, setQuery] = useState("");
   const [predictions, setPredictions] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [countryCode, setCountryCode] = useState<string>("");
+  
+  // Map Picking State
+  const [isPickingLocation, setIsPickingLocation] = useState(false);
+  const [pickedAreaName, setPickedAreaName] = useState("");
+
+  useEffect(() => {
+    if (location && GOOGLE_API_KEY) {
+      const fetchCountry = async () => {
+        try {
+          const res = await fetch(
+            `https://maps.googleapis.com/maps/api/geocode/json?latlng=${location.coords.latitude},${location.coords.longitude}&key=${GOOGLE_API_KEY}`
+          );
+          const data = await res.json();
+          if (data.status === "OK" && data.results.length > 0) {
+            const comps = data.results[0].address_components;
+            const countryComp = comps.find((c: any) => c.types.includes("country"));
+            if (countryComp) {
+              setCountryCode(countryComp.short_name);
+            }
+          }
+        } catch (e) {
+          console.error("Failed to fetch country code", e);
+        }
+      };
+      fetchCountry();
+    }
+  }, [location]);
 
   const searchAreas = async (text: string) => {
     setQuery(text);
@@ -42,12 +73,29 @@ export const AreaSelectionModal = ({
 
     setLoading(true);
     try {
-      const res = await fetch(
-        `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${text}&types=(regions)&key=${GOOGLE_API_KEY}`,
-      );
+      let url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${text}&key=${GOOGLE_API_KEY}`;
+      if (countryCode) {
+        url += `&components=country:${countryCode}`;
+      }
+
+      const res = await fetch(url);
       const data = await res.json();
       if (data.status === "OK") {
-        setPredictions(data.predictions);
+        // Filter out highly specific results (street addresses, buildings, etc.)
+        const forbiddenTypes = [
+          "street_address",
+          "route",
+          "premise",
+          "subpremise",
+          "plus_code",
+          "point_of_interest",
+          "establishment"
+        ];
+        
+        const filtered = data.predictions.filter(
+          (p: any) => !p.types.some((t: string) => forbiddenTypes.includes(t))
+        );
+        setPredictions(filtered);
       } else {
         setPredictions([]);
       }
@@ -70,6 +118,93 @@ export const AreaSelectionModal = ({
   const removeArea = (area: string) => {
     onUpdateAreas(preferredAreas.filter((a) => a !== area));
   };
+
+  if (isPickingLocation) {
+    return (
+      <Modal visible={isVisible} animationType="slide" transparent={true}>
+        <View style={[styles.overlay, { paddingTop: insets.top + 20 }]}>
+          <View style={styles.content}>
+            <View style={styles.header}>
+              <Text style={styles.title}>Pick Area on Map</Text>
+              <TouchableOpacity onPress={() => setIsPickingLocation(false)} style={styles.closeBtn}>
+                <X size={24} color={COLORS.text} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.subtitle}>
+              Move the map to select your preferred donation area.
+            </Text>
+
+            <View style={styles.mapContainer}>
+              <MapView
+                style={styles.map}
+                initialRegion={{
+                  latitude: location?.coords?.latitude || 23.8103,
+                  longitude: location?.coords?.longitude || 90.4125,
+                  latitudeDelta: 0.05,
+                  longitudeDelta: 0.05,
+                }}
+                onRegionChangeComplete={async (region) => {
+                  setPickedAreaName("Locating...");
+                  try {
+                    const res = await fetch(
+                      `https://maps.googleapis.com/maps/api/geocode/json?latlng=${region.latitude},${region.longitude}&key=${GOOGLE_API_KEY}`
+                    );
+                    const data = await res.json();
+                    if (data.status === "OK" && data.results.length > 0) {
+                      let foundName = "";
+                      for (const result of data.results) {
+                        const comps = result.address_components;
+                        const sub = comps.find(
+                          (c: any) =>
+                            c.types.includes("neighborhood") ||
+                            c.types.includes("sublocality") ||
+                            c.types.includes("locality")
+                        );
+                        if (sub) {
+                          foundName = sub.long_name;
+                          break;
+                        }
+                      }
+                      if (!foundName) {
+                        foundName = data.results[0].formatted_address.split(",")[0];
+                      }
+                      setPickedAreaName(foundName);
+                    } else {
+                        setPickedAreaName("Unknown Area");
+                    }
+                  } catch (e) {
+                      setPickedAreaName("Unknown Area");
+                  }
+                }}
+              />
+              <View style={styles.centerPinContainer} pointerEvents="none">
+                <MapPin size={40} color={COLORS.primary} />
+              </View>
+            </View>
+
+            <View style={styles.pickedAreaContainer}>
+              <Text style={styles.pickedAreaLabel}>Selected Area:</Text>
+              <Text style={styles.pickedAreaText}>{pickedAreaName || "Locating..."}</Text>
+            </View>
+
+            <TouchableOpacity
+              style={[styles.doneButton, (!pickedAreaName || pickedAreaName === "Locating..." || pickedAreaName === "Unknown Area") && { opacity: 0.5 }]}
+              disabled={!pickedAreaName || pickedAreaName === "Locating..." || pickedAreaName === "Unknown Area"}
+              onPress={() => {
+                if (pickedAreaName && !preferredAreas.includes(pickedAreaName)) {
+                  onUpdateAreas([...preferredAreas, pickedAreaName]);
+                }
+                setIsPickingLocation(false);
+              }}
+            >
+              <Text style={styles.doneButtonText}>CONFIRM AREA</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+    );
+  }
 
   return (
     <Modal visible={isVisible} animationType="slide" transparent={true}>
@@ -95,7 +230,6 @@ export const AreaSelectionModal = ({
                 placeholderTextColor={COLORS.darkGray}
                 value={query}
                 onChangeText={searchAreas}
-                autoFocus
               />
               {query.length > 0 && (
                 <TouchableOpacity onPress={() => setQuery("")} style={styles.clearBtn}>
@@ -103,6 +237,13 @@ export const AreaSelectionModal = ({
                 </TouchableOpacity>
               )}
             </View>
+            <TouchableOpacity 
+              style={styles.pickMapButton}
+              onPress={() => setIsPickingLocation(true)}
+            >
+              <MapIcon size={18} color={COLORS.white} />
+              <Text style={styles.pickMapText}>Pick from Map</Text>
+            </TouchableOpacity>
           </View>
 
           {loading && (
@@ -219,6 +360,7 @@ const styles = StyleSheet.create({
     borderRadius: SPACING.sm,
     paddingHorizontal: SPACING.md,
     height: 50,
+    marginBottom: SPACING.sm,
   },
   searchIcon: {
     marginRight: SPACING.sm,
@@ -230,6 +372,55 @@ const styles = StyleSheet.create({
   },
   clearBtn: {
     padding: SPACING.xs,
+  },
+  pickMapButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.primary,
+    paddingVertical: SPACING.md,
+    borderRadius: SPACING.sm,
+    gap: SPACING.xs,
+  },
+  pickMapText: {
+    color: COLORS.white,
+    fontWeight: "bold",
+    fontSize: TYPOGRAPHY.sizes.md,
+  },
+  mapContainer: {
+    flex: 1,
+    borderRadius: SPACING.sm,
+    overflow: "hidden",
+    marginBottom: SPACING.md,
+    position: "relative",
+  },
+  map: {
+    flex: 1,
+  },
+  centerPinContainer: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingBottom: 40, 
+  },
+  pickedAreaContainer: {
+    backgroundColor: COLORS.gray,
+    padding: SPACING.md,
+    borderRadius: SPACING.sm,
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: SPACING.md,
+  },
+  pickedAreaLabel: {
+    fontSize: TYPOGRAPHY.sizes.md,
+    color: COLORS.darkGray,
+    marginRight: SPACING.sm,
+  },
+  pickedAreaText: {
+    fontSize: TYPOGRAPHY.sizes.md,
+    color: COLORS.text,
+    fontWeight: "bold",
+    flex: 1,
   },
   predictionsList: {
     paddingBottom: SPACING.md,
