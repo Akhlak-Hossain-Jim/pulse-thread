@@ -1,11 +1,20 @@
-
-import { CheckCircle, Scan, X } from 'lucide-react-native';
-import React, { useState } from 'react';
-import { ActivityIndicator, Linking, Modal, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { COLORS, SHADOWS, SPACING, TYPOGRAPHY } from '../../constants/theme';
-import { PlatformAlert } from '../../lib/platformAlert';
-import { supabase } from '../../lib/supabase';
-import { QRCodeScanner } from './QRCodeScanner';
+import { CheckCircle, Phone, Scan, X } from "lucide-react-native";
+import React, { useEffect, useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  Linking,
+  Modal,
+  Platform,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { COLORS, SHADOWS, SPACING, TYPOGRAPHY } from "../../constants/theme";
+import { PlatformAlert } from "../../lib/platformAlert";
+import { supabase } from "../../lib/supabase";
+import { QRCodeScanner } from "./QRCodeScanner";
 
 interface DonorVerificationSheetProps {
   donation: any;
@@ -14,9 +23,28 @@ interface DonorVerificationSheetProps {
   onVerifySuccess?: () => void;
 }
 
-export const DonorVerificationSheet = ({ donation, visible, onClose, onVerifySuccess }: DonorVerificationSheetProps) => {
+export const DonorVerificationSheet = ({
+  donation,
+  visible,
+  onClose,
+  onVerifySuccess,
+}: DonorVerificationSheetProps) => {
   const [isScanning, setIsScanning] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [requester, setRequester] = useState<any>(null);
+
+  useEffect(() => {
+    if (donation?.request?.requester_id) {
+      supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", donation.request.requester_id)
+        .single()
+        .then(({ data }) => {
+          if (data) setRequester(data);
+        });
+    }
+  }, [donation?.request?.requester_id]);
 
   if (!donation) return null;
 
@@ -25,153 +53,234 @@ export const DonorVerificationSheet = ({ donation, visible, onClose, onVerifySuc
     setLoading(true);
 
     try {
-      const [action, donationId] = data.split(':');
-      
+      const [action, donationId] = data.split(":");
+
       if (donationId !== donation.id) {
         throw new Error("Invalid QR Code: Donation ID mismatch");
       }
 
-      let newStatus = '';
+      let newStatus = "";
       let cancelReason = null;
 
-      if (action === 'VERIFY_ARRIVAL' && donation.status === 'EN_ROUTE') {
-        newStatus = 'ARRIVED';
-      } else if (action === 'VERIFY_MATCH' && donation.status === 'ARRIVED') {
-        newStatus = 'MATCHED';
-      } else if (action === 'VERIFY_MISMATCH' && donation.status === 'ARRIVED') {
-        newStatus = 'CANCELLED';
-        cancelReason = 'Cross-match Failed';
-      } else if (action === 'VERIFY_DONATION' && donation.status === 'MATCHED') {
-         newStatus = 'DONATED';
+      if (action === "VERIFY_ARRIVAL" && donation.status === "EN_ROUTE") {
+        newStatus = "ARRIVED";
+      } else if (action === "VERIFY_MATCH" && donation.status === "ARRIVED") {
+        newStatus = "MATCHED";
+      } else if (
+        action === "VERIFY_MISMATCH" &&
+        donation.status === "ARRIVED"
+      ) {
+        newStatus = "CANCELLED";
+        cancelReason = "Cross-match Failed";
+      } else if (
+        action === "VERIFY_DONATION" &&
+        donation.status === "MATCHED"
+      ) {
+        newStatus = "DONATED";
       } else {
         throw new Error("Invalid scan for current status");
       }
 
       const updateData: any = { status: newStatus };
       if (cancelReason) {
-          updateData.cancellation_reason = cancelReason;
+        updateData.cancellation_reason = cancelReason;
       }
 
       const { error } = await supabase
-        .from('donations')
+        .from("donations")
         .update(updateData)
-        .eq('id', donationId);
+        .eq("id", donationId);
 
       if (error) throw error;
 
       // Check for auto-fulfillment if donation completed
-      if (newStatus === 'DONATED' && donation.request_id) {
-          const { count } = await supabase
-            .from('donations')
-            .select('*', { count: 'exact', head: true })
-            .eq('request_id', donation.request_id)
-            .eq('status', 'DONATED');
-          
-           const { data: reqData } = await supabase
-            .from('requests')
-            .select('units_needed')
-            .eq('id', donation.request_id)
-            .single();
+      if (newStatus === "DONATED" && donation.request_id) {
+        const { count } = await supabase
+          .from("donations")
+          .select("*", { count: "exact", head: true })
+          .eq("request_id", donation.request_id)
+          .eq("status", "DONATED");
 
-           if (reqData && count && count >= reqData.units_needed) {
-               await supabase
-                .from('requests')
-                .update({ status: 'FULFILLED' })
-                .eq('id', donation.request_id);
-           }
+        const { data: reqData } = await supabase
+          .from("requests")
+          .select("units_needed")
+          .eq("id", donation.request_id)
+          .single();
+
+        if (reqData && count && count >= reqData.units_needed) {
+          await supabase
+            .from("requests")
+            .update({ status: "FULFILLED" })
+            .eq("id", donation.request_id);
+        }
       }
 
-      PlatformAlert.alert('Success', `Status updated to ${newStatus}`, [
-          { text: 'OK', onPress: () => onVerifySuccess?.() }
+      PlatformAlert.alert("Success", `Status updated to ${newStatus}`, [
+        { text: "OK", onPress: () => onVerifySuccess?.() },
       ]);
-
     } catch (error: any) {
-      PlatformAlert.alert('Error', error.message);
+      PlatformAlert.alert("Error", error.message);
     } finally {
       setLoading(false);
     }
   };
 
   const openMaps = () => {
-      const scheme = Platform.select({ ios: 'maps:', android: 'geo:' });
-      let lat = 0;
-      let lng = 0;
+    const scheme = Platform.select({ ios: "maps:", android: "geo:" });
+    let lat = 0;
+    let lng = 0;
 
-      if (donation.request?.location) {
-        // Try to parse POINT(lng lat)
-        const matches = donation.request.location.match(/POINT\(([^ ]+) ([^ ]+)\)/);
-        if (matches) {
-            lng = parseFloat(matches[1]);
-            lat = parseFloat(matches[2]);
-        }
+    if (donation.request?.location) {
+      // Try to parse POINT(lng lat)
+      const matches = donation.request.location.match(
+        /POINT\(([^ ]+) ([^ ]+)\)/,
+      );
+      if (matches) {
+        lng = parseFloat(matches[1]);
+        lat = parseFloat(matches[2]);
       }
-      
-      const label = donation.request?.hospital_name || 'Hospital';
-      const url = Platform.select({
-        ios: `${scheme}?q=${label}&ll=${lat},${lng}`,
-        android: `${scheme}0,0?q=${lat},${lng}(${label})`
-      });
+    }
 
-      if (url) {
-          Linking.openURL(url);
+    const label = donation.request?.hospital_name || "Hospital";
+    const url = Platform.select({
+      ios: `${scheme}?q=${label}&ll=${lat},${lng}`,
+      android: `${scheme}0,0?q=${lat},${lng}(${label})`,
+    });
+
+    if (url) {
+      Linking.openURL(url);
+    }
+  };
+
+  const handleCall = async (phone: string) => {
+    if (!phone) return;
+    try {
+      const url = `tel:${phone}`;
+      const supported = await Linking.canOpenURL(url);
+      if (supported) {
+        await Linking.openURL(url);
+      } else {
+        Alert.alert(
+          "Error",
+          "Your device does not support this feature or the phone number is invalid.",
+        );
       }
+    } catch (err) {
+      Alert.alert(
+        "Error",
+        "Unable to initiate call. This feature is not available on simulators.",
+      );
+    }
   };
 
   const renderAction = () => {
     if (loading) return <ActivityIndicator color={COLORS.primary} />;
 
-    switch (donation.status) {
-      case 'EN_ROUTE':
+    const isConfirmed = donation.timeline_logs?.some(
+      (l: any) => l.status === "CONFIRMED_BY_REQUESTER",
+    );
+    const displayStatus =
+      donation.status === "EN_ROUTE" && !isConfirmed
+        ? "PENDING"
+        : donation.status;
+
+    switch (displayStatus) {
+      case "PENDING":
         return (
-          <View style={styles.actionContainer}>
-            <TouchableOpacity style={styles.actionButton} onPress={() => setIsScanning(true)}>
-                <Scan color={COLORS.white} size={24} />
-                <Text style={styles.actionText}>SCAN ARRIVAL QR</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity style={[styles.actionButton, styles.secondaryButton]} onPress={openMaps}>
-                <Text style={[styles.actionText, styles.secondaryButtonText]}>NAVIGATE TO HOSPITAL</Text>
-            </TouchableOpacity>
+          <View style={styles.center}>
+            <Text style={styles.statusText}>Waiting for Confirmation</Text>
+            <Text style={styles.hint}>
+              The requester needs to confirm your request.
+            </Text>
+
+            {requester && (
+              <View style={styles.requesterInfo}>
+                <Text style={styles.requesterName}>{requester.full_name}</Text>
+                <TouchableOpacity
+                  style={styles.callButton}
+                  onPress={() => handleCall(requester.phone)}
+                >
+                  <Phone color={COLORS.white} size={20} />
+                  <Text style={styles.callButtonText}>Call Requester</Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
         );
-      case 'ARRIVED':
+      case "EN_ROUTE":
         return (
           <View style={styles.actionContainer}>
-            <TouchableOpacity style={styles.actionButton} onPress={() => setIsScanning(true)}>
-                <Scan color={COLORS.white} size={24} />
-                <Text style={styles.actionText}>SCAN MATCH SUCCESS</Text>
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={() => setIsScanning(true)}
+            >
+              <Scan color={COLORS.white} size={24} />
+              <Text style={styles.actionText}>SCAN ARRIVAL QR</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity 
-                style={[styles.actionButton, { backgroundColor: COLORS.error }]} 
-                onPress={() => setIsScanning(true)}
+            <TouchableOpacity
+              style={[styles.actionButton, styles.secondaryButton]}
+              onPress={openMaps}
             >
-                <X color={COLORS.white} size={24} />
-                <Text style={styles.actionText}>SCAN MATCH FAILED</Text>
+              <Text style={[styles.actionText, styles.secondaryButtonText]}>
+                NAVIGATE TO HOSPITAL
+              </Text>
             </TouchableOpacity>
           </View>
         );
-      case 'MATCHED':
+      case "ARRIVED":
         return (
-            <View style={styles.center}>
-                <Text style={styles.statusText}>Proceed to Transfusion</Text>
-                <Text style={styles.hint}>Wait for hospital staff to complete the procedure.</Text>
-                
-                <TouchableOpacity 
-                    style={[styles.actionButton, { marginTop: SPACING.lg, backgroundColor: COLORS.success }]} 
-                    onPress={() => setIsScanning(true)}
-                >
-                    <CheckCircle color={COLORS.white} size={24} />
-                    <Text style={styles.actionText}>SCAN DONATION COMPLETE</Text>
-                </TouchableOpacity>
-            </View>
+          <View style={styles.actionContainer}>
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={() => setIsScanning(true)}
+            >
+              <Scan color={COLORS.white} size={24} />
+              <Text style={styles.actionText}>SCAN MATCH SUCCESS</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.actionButton, { backgroundColor: COLORS.error }]}
+              onPress={() => setIsScanning(true)}
+            >
+              <X color={COLORS.white} size={24} />
+              <Text style={styles.actionText}>SCAN MATCH FAILED</Text>
+            </TouchableOpacity>
+          </View>
         );
-       case 'DONATED':
+      case "MATCHED":
         return (
-             <View style={styles.center}>
-                <CheckCircle color={COLORS.success} size={64} />
-                <Text style={[styles.statusText, { color: COLORS.success, marginTop: SPACING.md }]}>Detailed Verified!</Text>
-            </View>
+          <View style={styles.center}>
+            <Text style={styles.statusText}>Proceed to Transfusion</Text>
+            <Text style={styles.hint}>
+              Wait for hospital staff to complete the procedure.
+            </Text>
+
+            <TouchableOpacity
+              style={[
+                styles.actionButton,
+                { marginTop: SPACING.lg, backgroundColor: COLORS.success },
+              ]}
+              onPress={() => setIsScanning(true)}
+            >
+              <CheckCircle color={COLORS.white} size={24} />
+              <Text style={styles.actionText}>SCAN DONATION COMPLETE</Text>
+            </TouchableOpacity>
+          </View>
+        );
+      case "DONATED":
+        return (
+          <View style={styles.center}>
+            <CheckCircle color={COLORS.success} size={64} />
+            <Text
+              style={[
+                styles.statusText,
+                { color: COLORS.success, marginTop: SPACING.md },
+              ]}
+            >
+              Detailed Verified!
+            </Text>
+          </View>
         );
       default:
         return null;
@@ -186,23 +295,29 @@ export const DonorVerificationSheet = ({ donation, visible, onClose, onVerifySuc
       onRequestClose={onClose}
     >
       {isScanning ? (
-        <QRCodeScanner onScan={handleScan} onClose={() => setIsScanning(false)} />
+        <QRCodeScanner
+          onScan={handleScan}
+          onClose={() => setIsScanning(false)}
+        />
       ) : (
         <View style={styles.overlay}>
-            <View style={styles.sheet}>
+          <View style={styles.sheet}>
             <View style={styles.header}>
-                <Text style={styles.title}>Donor Actions</Text>
-                <TouchableOpacity onPress={onClose}>
+              <Text style={styles.title}>Donor Actions</Text>
+              <TouchableOpacity onPress={onClose}>
                 <X color={COLORS.text} size={24} />
-                </TouchableOpacity>
+              </TouchableOpacity>
             </View>
-            
+
             <View style={styles.content}>
-                 <Text style={styles.statusLabel}>Current Status: <Text style={styles.statusValue}>{donation.status}</Text></Text>
-                 <View style={styles.spacer} />
-                 {renderAction()}
+              <Text style={styles.statusLabel}>
+                Current Status:{" "}
+                <Text style={styles.statusValue}>{donation.status}</Text>
+              </Text>
+              <View style={styles.spacer} />
+              {renderAction()}
             </View>
-            </View>
+          </View>
         </View>
       )}
     </Modal>
@@ -212,83 +327,107 @@ export const DonorVerificationSheet = ({ donation, visible, onClose, onVerifySuc
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "flex-end",
   },
   sheet: {
     backgroundColor: COLORS.white,
     borderTopLeftRadius: SPACING.lg,
     borderTopRightRadius: SPACING.lg,
     padding: SPACING.lg,
-    height: '40%',
+    height: "40%",
     ...SHADOWS.floating,
   },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: SPACING.lg,
   },
   actionContainer: {
-      gap: SPACING.md,
-      width: '100%',
-      alignItems: 'center'
+    gap: SPACING.md,
+    width: "100%",
+    alignItems: "center",
   },
   secondaryButton: {
-      backgroundColor: COLORS.white,
-      borderWidth: 2,
-      borderColor: COLORS.primary
+    backgroundColor: COLORS.white,
+    borderWidth: 2,
+    borderColor: COLORS.primary,
   },
   secondaryButtonText: {
-      color: COLORS.primary
+    color: COLORS.primary,
   },
   title: {
     fontSize: TYPOGRAPHY.sizes.xl,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     color: COLORS.primary,
   },
   content: {
     flex: 1,
-    alignItems: 'center',
+    alignItems: "center",
   },
   statusLabel: {
     fontSize: TYPOGRAPHY.sizes.md,
     color: COLORS.darkGray,
   },
   statusValue: {
-      fontWeight: 'bold',
-      color: COLORS.primary
+    fontWeight: "bold",
+    color: COLORS.primary,
   },
   spacer: {
-      height: SPACING.xl
+    height: SPACING.xl,
   },
   actionButton: {
-      backgroundColor: COLORS.primary,
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: SPACING.md,
-      paddingVertical: SPACING.md,
-      paddingHorizontal: SPACING.xl,
-      borderRadius: SPACING.xxl,
-      ...SHADOWS.floating
+    backgroundColor: COLORS.primary,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.md,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.xl,
+    borderRadius: SPACING.xxl,
+    ...SHADOWS.floating,
   },
   actionText: {
-      color: COLORS.white,
-      fontWeight: 'bold',
-      fontSize: TYPOGRAPHY.sizes.md
+    color: COLORS.white,
+    fontWeight: "bold",
+    fontSize: TYPOGRAPHY.sizes.md,
   },
   center: {
-    alignItems: 'center',
+    alignItems: "center",
   },
   statusText: {
     fontSize: TYPOGRAPHY.sizes.lg,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     color: COLORS.text,
   },
   hint: {
     fontSize: TYPOGRAPHY.sizes.sm,
     color: COLORS.darkGray,
     marginTop: SPACING.sm,
-    textAlign: 'center'
-  }
+    textAlign: "center",
+  },
+  requesterInfo: {
+    marginTop: SPACING.lg,
+    alignItems: "center",
+    gap: SPACING.sm,
+  },
+  requesterName: {
+    fontSize: TYPOGRAPHY.sizes.lg,
+    fontWeight: "bold",
+    color: COLORS.text,
+  },
+  callButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.primary,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.lg,
+    borderRadius: SPACING.lg,
+    gap: SPACING.sm,
+  },
+  callButtonText: {
+    color: COLORS.white,
+    fontWeight: "bold",
+    fontSize: TYPOGRAPHY.sizes.md,
+  },
 });
