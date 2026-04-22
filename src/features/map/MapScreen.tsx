@@ -1,26 +1,32 @@
+import { Activity, LocateFixed, Navigation, Plus } from "lucide-react-native";
+import React, { useEffect, useRef, useState } from "react";
+import {
+  ActivityIndicator,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import MapView, { Polyline, PROVIDER_GOOGLE, Region } from "react-native-maps";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { Activity, LocateFixed, Navigation, Plus } from 'lucide-react-native';
-import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import MapView, { Polyline, PROVIDER_GOOGLE, Region } from 'react-native-maps';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-
-import { ErrorBoundary } from '../../components/ErrorBoundary';
-import { MapMarker } from '../../components/MapMarker';
-import { COLORS, SPACING } from '../../constants/theme';
-import { useAuth } from '../../context/AuthProvider';
-import { decodePolyline } from '../../lib/polyline';
-import { supabase } from '../../lib/supabase';
-import { useLocationStore } from '../../store/locationStore';
-import { AcceptSheet } from '../donor/AcceptSheet';
-import { RequestSheet } from '../request/RequestSheet';
-import { DonorVerificationSheet } from '../verification/DonorVerificationSheet';
-import { RequesterVerificationSheet } from '../verification/RequesterVerificationSheet';
+import { ErrorBoundary } from "../../components/ErrorBoundary";
+import { MapMarker } from "../../components/MapMarker";
+import { COLORS, SPACING } from "../../constants/theme";
+import { useAuth } from "../../context/AuthProvider";
+import { decodePolyline } from "../../lib/polyline";
+import { supabase } from "../../lib/supabase";
+import { useLocationStore } from "../../store/locationStore";
+import { AcceptSheet } from "../donor/AcceptSheet";
+import { RequestSheet } from "../request/RequestSheet";
+import { DonorVerificationSheet } from "../verification/DonorVerificationSheet";
+import { RequesterVerificationSheet } from "../verification/RequesterVerificationSheet";
 
 export const MapScreen = () => {
   const mapRef = useRef<MapView>(null);
   const insets = useSafeAreaInsets();
-  const { location, errorMsg, requestPermission, setLocation } = useLocationStore();
+  const { location, errorMsg, requestPermission, setLocation } =
+    useLocationStore();
   const { session } = useAuth();
   const [isRequestSheetVisible, setIsRequestSheetVisible] = useState(false);
   const [requests, setRequests] = useState<any[]>([]);
@@ -34,61 +40,69 @@ export const MapScreen = () => {
   const [dataError, setDataError] = useState<string | null>(null);
   const [initError, setInitError] = useState<Error | null>(null);
 
-  
+  // Use the restricted ANDROID key with header injection.
   const GOOGLE_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_ANDROID;
+  const GOOGLE_HEADERS = {
+    "X-Android-Package": "dev.akhlak.app.pulsethread",
+    "X-Android-Cert": (process.env.EXPO_PUBLIC_GOOGLE_MAPS_SHA1 || "").replace(
+      /:/g,
+      "",
+    ),
+  };
 
   // Debounced reverse geocode to avoid hitting API limit on every frame
   const handleRegionChange = async (region: Region) => {
-      if (isPickingLocation) {
-          // Just update coords first for UI responsiveness
-          setPickupCoords({
-              latitude: region.latitude,
-              longitude: region.longitude,
-              address: 'Loading...'
-          });
-      }
+    if (isPickingLocation) {
+      // Just update coords first for UI responsiveness
+      setPickupCoords({
+        latitude: region.latitude,
+        longitude: region.longitude,
+        address: "Loading...",
+      });
+    }
   };
 
   const handleRegionChangeComplete = async (region: Region) => {
     if (isPickingLocation) {
-        try {
-            const res = await fetch(
-                `https://maps.googleapis.com/maps/api/geocode/json?latlng=${region.latitude},${region.longitude}&key=${GOOGLE_API_KEY}`
-            );
-            const data = await res.json();
-            if (data.status === 'OK' && data.results.length > 0) {
-                setPickupCoords({
-                    latitude: region.latitude,
-                    longitude: region.longitude,
-                    address: data.results[0].formatted_address
-                });
-            } else {
-                 setPickupCoords({
-                    latitude: region.latitude,
-                    longitude: region.longitude,
-                    address: `${region.latitude.toFixed(4)}, ${region.longitude.toFixed(4)}`
-                });
-            }
-        } catch (e) {
-             setPickupCoords({
-                latitude: region.latitude,
-                longitude: region.longitude,
-                address: `${region.latitude.toFixed(4)}, ${region.longitude.toFixed(4)}`
-            });
+      try {
+        const res = await fetch(
+          `https://maps.googleapis.com/maps/api/geocode/json?latlng=${region.latitude},${region.longitude}&key=${GOOGLE_API_KEY}`,
+          { headers: GOOGLE_HEADERS },
+        );
+        const data = await res.json();
+        if (data.status === "OK" && data.results.length > 0) {
+          setPickupCoords({
+            latitude: region.latitude,
+            longitude: region.longitude,
+            address: data.results[0].formatted_address,
+          });
+        } else {
+          setPickupCoords({
+            latitude: region.latitude,
+            longitude: region.longitude,
+            address: `${region.latitude.toFixed(4)}, ${region.longitude.toFixed(4)}`,
+          });
         }
+      } catch (e) {
+        setPickupCoords({
+          latitude: region.latitude,
+          longitude: region.longitude,
+          address: `${region.latitude.toFixed(4)}, ${region.longitude.toFixed(4)}`,
+        });
+      }
     }
   };
   useEffect(() => {
     const timer = setTimeout(async () => {
-        try {
-            console.log("MapScreen mounted, triggering permissions...");
-            await requestPermission();
-            await fetchMyActiveState();
-            await fetchRequests();
-        } catch (err: any) {
-            console.error("MapScreen Init Error:", err);
-            setInitError(err);
-        }
+      try {
+        console.log("MapScreen mounted, triggering permissions...");
+        await requestPermission();
+        await fetchMyActiveState();
+        await fetchRequests();
+      } catch (err: any) {
+        console.error("MapScreen Init Error:", err);
+        setInitError(err);
+      }
     }, 1000); // 1s delay to let navigation finish and map mount
 
     return () => clearTimeout(timer);
@@ -98,129 +112,134 @@ export const MapScreen = () => {
     if (!session?.user) return;
 
     // Realtime subscriptions
-    const channel = supabase.channel('map_screen_updates')
-        .on(
-            'postgres_changes',
-            {
-                event: '*',
-                schema: 'public',
-                table: 'requests',
-                filter: `requester_id=eq.${session.user.id}`,
-            },
-            () => {
-                console.log('My Request updated, fetching state...');
-                fetchMyActiveState();
-            }
-        )
-        .on(
-            'postgres_changes',
-            {
-                event: '*',
-                schema: 'public',
-                table: 'donations',
-                filter: `donor_id=eq.${session.user.id}`,
-            },
-            () => {
-                console.log('My Donation updated, fetching state...');
-                fetchMyActiveState();
-            }
-        )
-         // Listen for ANY donation changes related to my active request (if I'm a requester)
-         // Since we can't easily filter by "my request IDs" without knowing them, 
-         // and we want to catch the initial acceptance (INSERT), we rely on:
-         // 1. If logic updates request status -> caught by requests sub above.
-         // 2. We can also subscribe to donations generally if volume is low, OR
-         //    More specifically, if we have myActiveRequest, we subscribe to it.
-         //    But that requires a separate effect dependent on myActiveRequest.
-         //    For now, let's add a separate effect for that case or handle it here if possible.
-        .subscribe();
-        
+    const channel = supabase
+      .channel("map_screen_updates")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "requests",
+          filter: `requester_id=eq.${session.user.id}`,
+        },
+        () => {
+          console.log("My Request updated, fetching state...");
+          fetchMyActiveState();
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "donations",
+          filter: `donor_id=eq.${session.user.id}`,
+        },
+        () => {
+          console.log("My Donation updated, fetching state...");
+          fetchMyActiveState();
+        },
+      )
+      // Listen for ANY donation changes related to my active request (if I'm a requester)
+      // Since we can't easily filter by "my request IDs" without knowing them,
+      // and we want to catch the initial acceptance (INSERT), we rely on:
+      // 1. If logic updates request status -> caught by requests sub above.
+      // 2. We can also subscribe to donations generally if volume is low, OR
+      //    More specifically, if we have myActiveRequest, we subscribe to it.
+      //    But that requires a separate effect dependent on myActiveRequest.
+      //    For now, let's add a separate effect for that case or handle it here if possible.
+      .subscribe();
+
     // Separate subscription for incoming donations to my requests
     let requestChannel: any = null;
     if (myActiveRequest) {
-         requestChannel = supabase.channel(`my_request_donations:${myActiveRequest.id}`)
-            .on(
-                'postgres_changes',
-                {
-                    event: '*',
-                    schema: 'public',
-                    table: 'donations',
-                    filter: `request_id=eq.${myActiveRequest.id}`
-                },
-                () => {
-                    console.log('Donation for my request updated/created, fetching state...');
-                    fetchMyActiveState();
-                }
-            )
-            .subscribe();
+      requestChannel = supabase
+        .channel(`my_request_donations:${myActiveRequest.id}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "donations",
+            filter: `request_id=eq.${myActiveRequest.id}`,
+          },
+          () => {
+            console.log(
+              "Donation for my request updated/created, fetching state...",
+            );
+            fetchMyActiveState();
+          },
+        )
+        .subscribe();
     }
 
     return () => {
-        supabase.removeChannel(channel);
-        if (requestChannel) supabase.removeChannel(requestChannel);
+      supabase.removeChannel(channel);
+      if (requestChannel) supabase.removeChannel(requestChannel);
     };
   }, [session?.user?.id, myActiveRequest?.id]);
 
   const fetchMyActiveState = async () => {
     if (!session) return;
-    
+
     // Check for active request
     const { data: requestData, error: reqErr } = await supabase
-        .from('requests')
-        .select('*')
-        .eq('requester_id', session.user.id)
-        .in('status', ['PENDING', 'ACCEPTED'])
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle(); 
-        
+      .from("requests")
+      .select("*")
+      .eq("requester_id", session.user.id)
+      .in("status", ["PENDING", "ACCEPTED"])
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
     if (reqErr) console.error("Error fetching active request:", reqErr);
-    
+
     setMyActiveRequest(requestData); // Clear if null
 
     const { data: donationData, error: donErr } = await supabase
-        .from('donations')
-        .select('*, request:requests(*)')
-        .eq('donor_id', session.user.id)
-        .in('status', ['EN_ROUTE', 'ARRIVED', 'MATCHED'])
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-        
+      .from("donations")
+      .select("*, request:requests(*)")
+      .eq("donor_id", session.user.id)
+      .in("status", ["EN_ROUTE", "ARRIVED", "MATCHED"])
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
     if (donErr) console.error("Error fetching active donation:", donErr);
-    
+
     setMyActiveDonation(donationData); // Clear if null
   };
 
   const fetchRequests = async () => {
     const { data, error } = await supabase
-      .from('requests')
-      .select('*, donations(status)')
-      .eq('status', 'PENDING');
-    
+      .from("requests")
+      .select("*, donations(status)")
+      .eq("status", "PENDING");
+
     if (error) {
-     console.error(error);
+      console.error(error);
     } else {
       // Filter out requests that have enough active donors
       const filtered = (data || []).filter((req: any) => {
-             const activeDonations = req.donations?.filter((d: any) => d.status !== 'CANCELLED') || [];
-             
-             // Data Integrity Check
-             if (req.location) {
-                const matches = req.location.match(/POINT\(([^ ]+) ([^ ]+)\)/);
-                if (matches) {
-                    const lon = parseFloat(matches[1]);
-                    const lat = parseFloat(matches[2]);
-                    if (isNaN(lon) || isNaN(lat)) {
-                         const msg = `Invalid coordinates for request ${req.id}: ${req.location}`;
-                         console.error(msg);
-                         setDataError(msg); 
-                         return false; // exclude from map
-                    }
-                }
-             }
+        const activeDonations =
+          req.donations?.filter((d: any) => d.status !== "CANCELLED") || [];
 
-             return activeDonations.length < req.units_needed;
+        // Data Integrity Check
+        if (req.location) {
+          const matches = req.location.match(/POINT\(([^ ]+) ([^ ]+)\)/);
+          if (matches) {
+            const lon = parseFloat(matches[1]);
+            const lat = parseFloat(matches[2]);
+            if (isNaN(lon) || isNaN(lat)) {
+              const msg = `Invalid coordinates for request ${req.id}: ${req.location}`;
+              console.error(msg);
+              setDataError(msg);
+              return false; // exclude from map
+            }
+          }
+        }
+
+        return activeDonations.length < req.units_needed;
       });
       setRequests(filtered);
     }
@@ -228,83 +247,82 @@ export const MapScreen = () => {
 
   // Route State
   const [routeCoords, setRouteCoords] = useState<any[]>([]);
-  
+
   useEffect(() => {
-      if (myActiveDonation && location) {
-          fetchDirections();
-      } else {
-          setRouteCoords([]);
-      }
+    if (myActiveDonation && location) {
+      fetchDirections();
+    } else {
+      setRouteCoords([]);
+    }
   }, [myActiveDonation, location]);
 
   const fetchDirections = async () => {
-      if (!myActiveDonation || !location) return;
-      
-      // Get destination from request
-      const { data: requestData } = await supabase
-        .from('requests')
-        .select('location')
-        .eq('id', myActiveDonation.request_id)
-        .single();
-      
-      if (!requestData?.location) return;
+    if (!myActiveDonation || !location) return;
 
-      const matches = requestData.location.match(/POINT\(([^ ]+) ([^ ]+)\)/);
-      if (!matches) return;
-      const destLng = matches[1];
-      const destLat = matches[2];
+    // Get destination from request
+    const { data: requestData } = await supabase
+      .from("requests")
+      .select("location")
+      .eq("id", myActiveDonation.request_id)
+      .single();
 
-      try {
-          const resp = await fetch(
-              `https://maps.googleapis.com/maps/api/directions/json?origin=${location.coords.latitude},${location.coords.longitude}&destination=${destLat},${destLng}&key=${GOOGLE_API_KEY}`
-          );
-          const data = await resp.json();
-          if (data.routes.length > 0) {
-              const points = decodePolyline(data.routes[0].overview_polyline.points);
-              setRouteCoords(points);
-          }
-      } catch (error) {
-          console.error("Error fetching directions", error);
+    if (!requestData?.location) return;
+
+    const matches = requestData.location.match(/POINT\(([^ ]+) ([^ ]+)\)/);
+    if (!matches) return;
+    const destLng = matches[1];
+    const destLat = matches[2];
+
+    try {
+      const resp = await fetch(
+        `https://maps.googleapis.com/maps/api/directions/json?origin=${location.coords.latitude},${location.coords.longitude}&destination=${destLat},${destLng}&key=${GOOGLE_API_KEY}`,
+        { headers: GOOGLE_HEADERS },
+      );
+      const data = await resp.json();
+      if (data.routes.length > 0) {
+        const points = decodePolyline(data.routes[0].overview_polyline.points);
+        setRouteCoords(points);
       }
+    } catch (error) {
+      console.error("Error fetching directions", error);
+    }
   };
 
   const handlePickLocationStart = () => {
-      setIsRequestSheetVisible(false);
-      setIsPickingLocation(true);
-      // Default to current location if picking starts
-      if (location) {
-          setPickupCoords({
-              latitude: location.coords.latitude,
-              longitude: location.coords.longitude
-          });
-      }
+    setIsRequestSheetVisible(false);
+    setIsPickingLocation(true);
+    // Default to current location if picking starts
+    if (location) {
+      setPickupCoords({
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+      });
+    }
   };
 
   const handlePickLocationConfirm = () => {
-      setIsPickingLocation(false);
-      setIsRequestSheetVisible(true);
+    setIsPickingLocation(false);
+    setIsRequestSheetVisible(true);
   };
-
-
 
   // Force default location handler
   const handleForceLocation = () => {
-      setLocation({
-          coords: {
-              latitude: 37.7749,
-              longitude: -122.4194,
-              altitude: null,
-              accuracy: null,
-              altitudeAccuracy: null,
-              heading: null,
-              speed: null
-          },
-          timestamp: Date.now()
-      } as any);
+    setLocation({
+      coords: {
+        latitude: 37.7749,
+        longitude: -122.4194,
+        altitude: null,
+        accuracy: null,
+        altitudeAccuracy: null,
+        heading: null,
+        speed: null,
+      },
+      timestamp: Date.now(),
+    } as any);
   };
 
   if (initError) {
-      throw initError; // Re-throw to be caught by ErrorBoundary
+    throw initError; // Re-throw to be caught by ErrorBoundary
   }
 
   if (!location) {
@@ -313,9 +331,19 @@ export const MapScreen = () => {
         <ActivityIndicator size="large" color={COLORS.primary} />
         <Text style={styles.loadingText}>Locating you...</Text>
         {errorMsg && <Text style={styles.errorText}>{errorMsg}</Text>}
-        
-        <TouchableOpacity onPress={handleForceLocation} style={{ marginTop: 20, padding: 10, backgroundColor: COLORS.gray, borderRadius: 8 }}>
-            <Text style={{ color: COLORS.text }}>Use Default Location (Skip)</Text>
+
+        <TouchableOpacity
+          onPress={handleForceLocation}
+          style={{
+            marginTop: 20,
+            padding: 10,
+            backgroundColor: COLORS.gray,
+            borderRadius: 8,
+          }}
+        >
+          <Text style={{ color: COLORS.text }}>
+            Use Default Location (Skip)
+          </Text>
         </TouchableOpacity>
       </View>
     );
@@ -330,198 +358,209 @@ export const MapScreen = () => {
 
   return (
     <ErrorBoundary onReset={() => requestPermission()}>
-        <View style={styles.container}>
+      <View style={styles.container}>
         <MapView
-            ref={mapRef}
-            provider={PROVIDER_GOOGLE}
-            style={styles.map}
-            initialRegion={initialRegion}
-            showsUserLocation
-            showsMyLocationButton={false}
-            onRegionChange={handleRegionChange}
-            onRegionChangeComplete={handleRegionChangeComplete}
+          ref={mapRef}
+          provider={PROVIDER_GOOGLE}
+          style={styles.map}
+          initialRegion={initialRegion}
+          showsUserLocation
+          showsMyLocationButton={false}
+          onRegionChange={handleRegionChange}
+          onRegionChangeComplete={handleRegionChangeComplete}
         >
-            {/* Render Requests (Hide when picking) */}
-            {!isPickingLocation && requests.map((req) => {
-                if (!req.location) return null;
-                const matches = req.location.match(/POINT\(([^ ]+) ([^ ]+)\)/);
-                if (!matches) return null;
-                const longitude = parseFloat(matches[1]);
-                const latitude = parseFloat(matches[2]);
+          {/* Render Requests (Hide when picking) */}
+          {!isPickingLocation &&
+            requests.map((req) => {
+              if (!req.location) return null;
+              const matches = req.location.match(/POINT\(([^ ]+) ([^ ]+)\)/);
+              if (!matches) return null;
+              const longitude = parseFloat(matches[1]);
+              const latitude = parseFloat(matches[2]);
 
-                if (isNaN(longitude) || isNaN(latitude)) {
-                    console.error(`Invalid coordinates for request ${req.id}: ${req.location}`);
-                    return null;
-                }
-
-                // Don't show my own requests as "Donor targets"
-                if (req.requester_id === session?.user.id) return null;
-
-                const scheduleText = req.scheduled_datetime 
-                    ? `Scheduled for: ${new Date(req.scheduled_datetime).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}`
-                    : "Actively looking for now";
-
-                return (
-                    <MapMarker
-                        key={req.id}
-                        coordinate={{ latitude, longitude }}
-                        type="request"
-                        title={`${req.blood_type} Needed`}
-                        description={`${req.hospital_name}\n${scheduleText}`}
-                        onPress={() => setSelectedRequest(req)}
-                    />
+              if (isNaN(longitude) || isNaN(latitude)) {
+                console.error(
+                  `Invalid coordinates for request ${req.id}: ${req.location}`,
                 );
+                return null;
+              }
+
+              // Don't show my own requests as "Donor targets"
+              if (req.requester_id === session?.user.id) return null;
+
+              const scheduleText = req.scheduled_datetime
+                ? `Scheduled for: ${new Date(req.scheduled_datetime).toLocaleString([], { dateStyle: "short", timeStyle: "short" })}`
+                : "Actively looking for now";
+
+              return (
+                <MapMarker
+                  key={req.id}
+                  coordinate={{ latitude, longitude }}
+                  type="request"
+                  title={`${req.blood_type} Needed`}
+                  description={`${req.hospital_name}\n${scheduleText}`}
+                  onPress={() => setSelectedRequest(req)}
+                />
+              );
             })}
 
-            {/* User Marker */}
-            <MapMarker 
-                coordinate={{ 
-                    latitude: location.coords.latitude, 
-                    longitude: location.coords.longitude 
-                }} 
-                type="user" 
-            />
+          {/* User Marker */}
+          <MapMarker
+            coordinate={{
+              latitude: location.coords.latitude,
+              longitude: location.coords.longitude,
+            }}
+            type="user"
+          />
 
-            {/* Route Polyline */}
-            {routeCoords.length > 0 && (
-                <Polyline
-                    coordinates={routeCoords}
-                    strokeColor={COLORS.primary}
-                    strokeWidth={4}
-                />
-            )}
+          {/* Route Polyline */}
+          {routeCoords.length > 0 && (
+            <Polyline
+              coordinates={routeCoords}
+              strokeColor={COLORS.primary}
+              strokeWidth={4}
+            />
+          )}
         </MapView>
 
         {/* Center Pin for Picking */}
         {isPickingLocation && (
-            <View style={styles.centerPinContainer} pointerEvents="none">
-                <MapMarker 
-                    type="request" // Re-use the droplet/pulse marker as the pin
-                    coordinate={{ latitude: 0, longitude: 0 }} // Dummy, handled by absolute center View
-                />
-            </View>
+          <View style={styles.centerPinContainer} pointerEvents="none">
+            <MapMarker
+              type="request" // Re-use the droplet/pulse marker as the pin
+              coordinate={{ latitude: 0, longitude: 0 }} // Dummy, handled by absolute center View
+            />
+          </View>
         )}
 
         {/* Confirm Button for Picking */}
         {isPickingLocation && (
-            <View style={styles.pickerOverlay}>
-                <Text style={styles.pickerInstruction}>
-                    {pickupCoords?.address || "Move map to location"}
-                </Text>
-                <TouchableOpacity style={styles.confirmButton} onPress={handlePickLocationConfirm}>
-                    <Text style={styles.confirmButtonText}>CONFIRM LOCATION</Text>
-                </TouchableOpacity>
-            </View> 
+          <View style={styles.pickerOverlay}>
+            <Text style={styles.pickerInstruction}>
+              {pickupCoords?.address || "Move map to location"}
+            </Text>
+            <TouchableOpacity
+              style={styles.confirmButton}
+              onPress={handlePickLocationConfirm}
+            >
+              <Text style={styles.confirmButtonText}>CONFIRM LOCATION</Text>
+            </TouchableOpacity>
+          </View>
         )}
-        
-        {!isPickingLocation && (
-            <>
-                <TouchableOpacity 
-                    style={styles.requestButton}
-                    onPress={() => setIsRequestSheetVisible(true)}
-                >
-                    <Plus color={COLORS.white} size={24} />
-                    <Text style={styles.requestButtonText}>REQUEST BLOOD</Text>
-                </TouchableOpacity>
 
-                <TouchableOpacity 
-                    style={styles.myLocationButton}
-                    onPress={() => {
-                        if (location && mapRef.current) {
-                            mapRef.current.animateToRegion({
-                                latitude: location.coords.latitude,
-                                longitude: location.coords.longitude,
-                                latitudeDelta: 0.05,
-                                longitudeDelta: 0.05,
-                            });
-                        } else {
-                            requestPermission();
-                        }
-                    }}
-                >
-                    <LocateFixed color={COLORS.primary} size={24} />
-                </TouchableOpacity>
-            </>
+        {!isPickingLocation && (
+          <>
+            <TouchableOpacity
+              style={styles.requestButton}
+              onPress={() => setIsRequestSheetVisible(true)}
+            >
+              <Plus color={COLORS.white} size={24} />
+              <Text style={styles.requestButtonText}>REQUEST BLOOD</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.myLocationButton}
+              onPress={() => {
+                if (location && mapRef.current) {
+                  mapRef.current.animateToRegion({
+                    latitude: location.coords.latitude,
+                    longitude: location.coords.longitude,
+                    latitudeDelta: 0.05,
+                    longitudeDelta: 0.05,
+                  });
+                } else {
+                  requestPermission();
+                }
+              }}
+            >
+              <LocateFixed color={COLORS.primary} size={24} />
+            </TouchableOpacity>
+          </>
         )}
 
         {/* Floating Status Buttons Container */}
         {!isPickingLocation && (
-            <View style={[styles.floatingButtonContainer, { top: insets.top + SPACING.lg }]}>
-                {myActiveRequest && (
-                    <TouchableOpacity 
-                        style={[styles.floatingButton, styles.requesterButton]}
-                        onPress={() => setIsVerificationVisible(true)}
-                    >
-                        <Activity color={COLORS.white} size={24} />
-                        <Text style={styles.requestButtonText}>MY REQUEST</Text>
-                    </TouchableOpacity>
-                )}
+          <View
+            style={[
+              styles.floatingButtonContainer,
+              { top: insets.top + SPACING.lg },
+            ]}
+          >
+            {myActiveRequest && (
+              <TouchableOpacity
+                style={[styles.floatingButton, styles.requesterButton]}
+                onPress={() => setIsVerificationVisible(true)}
+              >
+                <Activity color={COLORS.white} size={24} />
+                <Text style={styles.requestButtonText}>MY REQUEST</Text>
+              </TouchableOpacity>
+            )}
 
-                {myActiveDonation && (
-                    <TouchableOpacity 
-                        style={[styles.floatingButton, styles.donorButton]}
-                        onPress={() => setIsDonorActionsVisible(true)}
-                    >
-                        <Navigation color={COLORS.white} size={24} />
-                        <Text style={styles.requestButtonText}>DONATION ACTIVE</Text>
-                    </TouchableOpacity>
-                )}
-            </View>
+            {myActiveDonation && (
+              <TouchableOpacity
+                style={[styles.floatingButton, styles.donorButton]}
+                onPress={() => setIsDonorActionsVisible(true)}
+              >
+                <Navigation color={COLORS.white} size={24} />
+                <Text style={styles.requestButtonText}>DONATION ACTIVE</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         )}
 
-        <RequestSheet 
-            visible={isRequestSheetVisible} 
-            onClose={() => setIsRequestSheetVisible(false)}
-            onPickLocation={handlePickLocationStart}
-            selectedLocation={pickupCoords}
+        <RequestSheet
+          visible={isRequestSheetVisible}
+          onClose={() => setIsRequestSheetVisible(false)}
+          onPickLocation={handlePickLocationStart}
+          selectedLocation={pickupCoords}
         />
 
         <AcceptSheet
-            visible={!!selectedRequest}
-            request={selectedRequest}
-            onClose={() => {
-                setSelectedRequest(null);
-                fetchMyActiveState(); // Refresh state after acceptance
-            }}
+          visible={!!selectedRequest}
+          request={selectedRequest}
+          onClose={() => {
+            setSelectedRequest(null);
+            fetchMyActiveState(); // Refresh state after acceptance
+          }}
         />
 
         {myActiveRequest && (
-            <RequesterVerificationSheet
-                visible={isVerificationVisible}
-                requestId={myActiveRequest.id}
-                onClose={() => setIsVerificationVisible(false)}
-            />
+          <RequesterVerificationSheet
+            visible={isVerificationVisible}
+            requestId={myActiveRequest.id}
+            onClose={() => setIsVerificationVisible(false)}
+          />
         )}
 
         {myActiveDonation && (
-            <DonorVerificationSheet
-                visible={isDonorActionsVisible}
-                donation={myActiveDonation}
-                onClose={() => setIsDonorActionsVisible(false)}
-                onVerifySuccess={() => {
-                    fetchMyActiveState();
-                    // Optionally close the sheet or keep it open to show next step
-                    // setIsDonorActionsVisible(false); 
-                }}
-            />
+          <DonorVerificationSheet
+            visible={isDonorActionsVisible}
+            donation={myActiveDonation}
+            onClose={() => setIsDonorActionsVisible(false)}
+            onVerifySuccess={() => {
+              fetchMyActiveState();
+              // Optionally close the sheet or keep it open to show next step
+              // setIsDonorActionsVisible(false);
+            }}
+          />
         )}
 
-        {/* Data Error Modal */ }
+        {/* Data Error Modal */}
         {dataError && (
-            <View style={styles.errorModalOverlay}>
-                <View style={styles.errorModalBox}>
-                    <Text style={styles.errorModalTitle}>Data Error Detected</Text>
-                    <Text style={styles.errorModalText}>{dataError}</Text>
-                    <TouchableOpacity 
-                        style={styles.errorModalButton}
-                        onPress={() => setDataError(null)}
-                    >
-                        <Text style={styles.errorModalButtonText}>Dismiss</Text>
-                    </TouchableOpacity>
-                </View>
+          <View style={styles.errorModalOverlay}>
+            <View style={styles.errorModalBox}>
+              <Text style={styles.errorModalTitle}>Data Error Detected</Text>
+              <Text style={styles.errorModalText}>{dataError}</Text>
+              <TouchableOpacity
+                style={styles.errorModalButton}
+                onPress={() => setDataError(null)}
+              >
+                <Text style={styles.errorModalButtonText}>Dismiss</Text>
+              </TouchableOpacity>
             </View>
+          </View>
         )}
-        </View>
+      </View>
     </ErrorBoundary>
   );
 };
@@ -533,8 +572,8 @@ const styles = StyleSheet.create({
   },
   loadingContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     backgroundColor: COLORS.background,
   },
   loadingText: {
@@ -545,7 +584,7 @@ const styles = StyleSheet.create({
   errorText: {
     marginTop: SPACING.md,
     color: COLORS.error,
-    textAlign: 'center',
+    textAlign: "center",
     marginHorizontal: SPACING.lg,
   },
   map: {
@@ -553,13 +592,13 @@ const styles = StyleSheet.create({
   },
   centerPinContainer: {
     ...StyleSheet.absoluteFillObject,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     zIndex: 10,
-    pointerEvents: 'none',
+    pointerEvents: "none",
   },
   pickerOverlay: {
-    position: 'absolute',
+    position: "absolute",
     bottom: 40,
     left: 20,
     right: 20,
@@ -574,66 +613,66 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
     elevation: 5,
-    alignItems: 'center',
+    alignItems: "center",
   },
   pickerInstruction: {
     fontSize: 16,
     color: COLORS.text,
     marginBottom: SPACING.md,
-    textAlign: 'center',
+    textAlign: "center",
   },
   confirmButton: {
     backgroundColor: COLORS.primary,
     paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.xl,
     borderRadius: 8,
-    width: '100%',
-    alignItems: 'center',
+    width: "100%",
+    alignItems: "center",
   },
   confirmButtonText: {
     color: COLORS.white,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     fontSize: 16,
   },
   requestButton: {
-    position: 'absolute',
+    position: "absolute",
     bottom: SPACING.sm,
     left: SPACING.sm,
     backgroundColor: COLORS.primary,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     paddingVertical: 12,
     paddingHorizontal: 20,
     borderRadius: 30,
     elevation: 5,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.3,
     shadowRadius: 3,
   },
   requestButtonText: {
     color: COLORS.white,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     marginLeft: 8,
   },
   floatingButtonContainer: {
-    position: 'absolute',
+    position: "absolute",
     left: 20,
     right: 20,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    justifyContent: "space-between",
     zIndex: 10,
   },
   floatingButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     padding: 10,
     borderRadius: 20,
     elevation: 3,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOpacity: 0.2,
     shadowRadius: 2,
-    backgroundColor: COLORS.gray, 
+    backgroundColor: COLORS.gray,
   },
   requesterButton: {
     backgroundColor: COLORS.primary,
@@ -643,31 +682,31 @@ const styles = StyleSheet.create({
   },
   errorModalOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
     zIndex: 999,
   },
   errorModalBox: {
-    width: '85%',
+    width: "85%",
     backgroundColor: COLORS.white,
     padding: SPACING.xl,
     borderRadius: 16,
-    alignItems: 'center',
+    alignItems: "center",
     elevation: 5,
   },
   errorModalTitle: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     color: COLORS.error,
     marginBottom: SPACING.md,
   },
   errorModalText: {
     fontSize: 14,
     color: COLORS.text,
-    textAlign: 'center',
+    textAlign: "center",
     marginBottom: SPACING.lg,
-    fontFamily: 'monospace',
+    fontFamily: "monospace",
   },
   errorModalButton: {
     backgroundColor: COLORS.primary,
@@ -677,24 +716,21 @@ const styles = StyleSheet.create({
   },
   errorModalButtonText: {
     color: COLORS.white,
-    fontWeight: 'bold',
+    fontWeight: "bold",
   },
   myLocationButton: {
-    position: 'absolute',
+    position: "absolute",
     bottom: SPACING.sm,
     right: SPACING.sm,
     backgroundColor: COLORS.white,
     padding: 12,
     borderRadius: 30,
     elevation: 5,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.3,
     shadowRadius: 3,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
 });
-
-
-
