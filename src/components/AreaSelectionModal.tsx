@@ -1,7 +1,8 @@
-import { MapPin, Search, X, Map as MapIcon } from "lucide-react-native";
+import { Map as MapIcon, MapPin, Search, X } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Modal,
   StyleSheet,
@@ -22,7 +23,16 @@ interface AreaSelectionModalProps {
   onUpdateAreas: (areas: string[]) => void;
 }
 
+// Use the restricted ANDROID key with header injection.
+// This allows us to keep the key restricted to our app package + SHA-1 fingerprint.
 const GOOGLE_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_ANDROID;
+const GOOGLE_HEADERS = {
+  "X-Android-Package": "dev.akhlak.app.pulsethread",
+  "X-Android-Cert": (process.env.EXPO_PUBLIC_GOOGLE_MAPS_SHA1 || "").replace(
+    /:/g,
+    "",
+  ),
+};
 
 export const AreaSelectionModal = ({
   isVisible,
@@ -36,7 +46,7 @@ export const AreaSelectionModal = ({
   const [predictions, setPredictions] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [countryCode, setCountryCode] = useState<string>("");
-  
+
   // Map Picking State
   const [isPickingLocation, setIsPickingLocation] = useState(false);
   const [pickedAreaName, setPickedAreaName] = useState("");
@@ -46,12 +56,15 @@ export const AreaSelectionModal = ({
       const fetchCountry = async () => {
         try {
           const res = await fetch(
-            `https://maps.googleapis.com/maps/api/geocode/json?latlng=${location.coords.latitude},${location.coords.longitude}&key=${GOOGLE_API_KEY}`
+            `https://maps.googleapis.com/maps/api/geocode/json?latlng=${location.coords.latitude},${location.coords.longitude}&key=${GOOGLE_API_KEY}`,
+            { headers: GOOGLE_HEADERS },
           );
           const data = await res.json();
           if (data.status === "OK" && data.results.length > 0) {
             const comps = data.results[0].address_components;
-            const countryComp = comps.find((c: any) => c.types.includes("country"));
+            const countryComp = comps.find((c: any) =>
+              c.types.includes("country"),
+            );
             if (countryComp) {
               setCountryCode(countryComp.short_name);
             }
@@ -71,36 +84,57 @@ export const AreaSelectionModal = ({
       return;
     }
 
+    if (!GOOGLE_API_KEY) {
+      const msg = "[AreaSelectionModal] GOOGLE_API_KEY is undefined.";
+      console.error(msg);
+      Alert.alert("Debug: Missing API Key", msg);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     try {
-      let url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${text}&key=${GOOGLE_API_KEY}`;
+      // `types=(regions)` tells the API to return only area-level results
+      // (neighborhoods, sublocalities, cities, countries) — not streets or POIs.
+      // This is more reliable than client-side filtering.
+      let url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(text)}&types=(regions)&key=${GOOGLE_API_KEY}`;
       if (countryCode) {
         url += `&components=country:${countryCode}`;
       }
 
-      const res = await fetch(url);
+      const res = await fetch(url, { headers: GOOGLE_HEADERS });
       const data = await res.json();
       if (data.status === "OK") {
-        // Filter out highly specific results (street addresses, buildings, etc.)
-        const forbiddenTypes = [
-          "street_address",
-          "route",
-          "premise",
-          "subpremise",
-          "plus_code",
-          "point_of_interest",
-          "establishment"
+        // Allow-list: keep only genuine area types.
+        // A place may have multiple types — we keep it if it has at least one area type.
+        const areaTypes = [
+          "neighborhood",
+          "sublocality",
+          "sublocality_level_1",
+          "sublocality_level_2",
+          "locality",
+          "administrative_area_level_1",
+          "administrative_area_level_2",
+          "administrative_area_level_3",
+          "administrative_area_level_4",
+          "political",
+          "geocode",
         ];
-        
-        const filtered = data.predictions.filter(
-          (p: any) => !p.types.some((t: string) => forbiddenTypes.includes(t))
+
+        const filtered = data.predictions.filter((p: any) =>
+          p.types.some((t: string) => areaTypes.includes(t)),
         );
         setPredictions(filtered);
       } else {
+        const msg = `Places API status: ${data.status}${data.error_message ? " — " + data.error_message : ""}`;
+        console.warn("[AreaSelectionModal]", msg);
+        Alert.alert("Debug: Places API Error", msg);
         setPredictions([]);
       }
     } catch (error) {
-      console.error("Error fetching areas", error);
+      const msg = String(error);
+      console.error("[AreaSelectionModal] Error fetching areas", msg);
+      Alert.alert("Debug: Fetch Error", msg);
     } finally {
       setLoading(false);
     }
@@ -126,7 +160,10 @@ export const AreaSelectionModal = ({
           <View style={styles.content}>
             <View style={styles.header}>
               <Text style={styles.title}>Pick Area on Map</Text>
-              <TouchableOpacity onPress={() => setIsPickingLocation(false)} style={styles.closeBtn}>
+              <TouchableOpacity
+                onPress={() => setIsPickingLocation(false)}
+                style={styles.closeBtn}
+              >
                 <X size={24} color={COLORS.text} />
               </TouchableOpacity>
             </View>
@@ -148,7 +185,8 @@ export const AreaSelectionModal = ({
                   setPickedAreaName("Locating...");
                   try {
                     const res = await fetch(
-                      `https://maps.googleapis.com/maps/api/geocode/json?latlng=${region.latitude},${region.longitude}&key=${GOOGLE_API_KEY}`
+                      `https://maps.googleapis.com/maps/api/geocode/json?latlng=${region.latitude},${region.longitude}&key=${GOOGLE_API_KEY}`,
+                      { headers: GOOGLE_HEADERS },
                     );
                     const data = await res.json();
                     if (data.status === "OK" && data.results.length > 0) {
@@ -159,7 +197,7 @@ export const AreaSelectionModal = ({
                           (c: any) =>
                             c.types.includes("neighborhood") ||
                             c.types.includes("sublocality") ||
-                            c.types.includes("locality")
+                            c.types.includes("locality"),
                         );
                         if (sub) {
                           foundName = sub.long_name;
@@ -167,14 +205,15 @@ export const AreaSelectionModal = ({
                         }
                       }
                       if (!foundName) {
-                        foundName = data.results[0].formatted_address.split(",")[0];
+                        foundName =
+                          data.results[0].formatted_address.split(",")[0];
                       }
                       setPickedAreaName(foundName);
                     } else {
-                        setPickedAreaName("Unknown Area");
+                      setPickedAreaName("Unknown Area");
                     }
                   } catch (e) {
-                      setPickedAreaName("Unknown Area");
+                    setPickedAreaName("Unknown Area");
                   }
                 }}
               />
@@ -185,14 +224,28 @@ export const AreaSelectionModal = ({
 
             <View style={styles.pickedAreaContainer}>
               <Text style={styles.pickedAreaLabel}>Selected Area:</Text>
-              <Text style={styles.pickedAreaText}>{pickedAreaName || "Locating..."}</Text>
+              <Text style={styles.pickedAreaText}>
+                {pickedAreaName || "Locating..."}
+              </Text>
             </View>
 
             <TouchableOpacity
-              style={[styles.doneButton, (!pickedAreaName || pickedAreaName === "Locating..." || pickedAreaName === "Unknown Area") && { opacity: 0.5 }]}
-              disabled={!pickedAreaName || pickedAreaName === "Locating..." || pickedAreaName === "Unknown Area"}
+              style={[
+                styles.doneButton,
+                (!pickedAreaName ||
+                  pickedAreaName === "Locating..." ||
+                  pickedAreaName === "Unknown Area") && { opacity: 0.5 },
+              ]}
+              disabled={
+                !pickedAreaName ||
+                pickedAreaName === "Locating..." ||
+                pickedAreaName === "Unknown Area"
+              }
               onPress={() => {
-                if (pickedAreaName && !preferredAreas.includes(pickedAreaName)) {
+                if (
+                  pickedAreaName &&
+                  !preferredAreas.includes(pickedAreaName)
+                ) {
                   onUpdateAreas([...preferredAreas, pickedAreaName]);
                 }
                 setIsPickingLocation(false);
@@ -218,12 +271,17 @@ export const AreaSelectionModal = ({
           </View>
 
           <Text style={styles.subtitle}>
-            Select areas where you are available to donate blood. You will receive notifications for requests in these areas.
+            Select areas where you are available to donate blood. You will
+            receive notifications for requests in these areas.
           </Text>
 
           <View style={styles.searchContainer}>
             <View style={styles.searchInputWrapper}>
-              <Search size={20} color={COLORS.darkGray} style={styles.searchIcon} />
+              <Search
+                size={20}
+                color={COLORS.darkGray}
+                style={styles.searchIcon}
+              />
               <TextInput
                 style={styles.searchInput}
                 placeholder="Search area (e.g. Dhanmondi)"
@@ -232,12 +290,15 @@ export const AreaSelectionModal = ({
                 onChangeText={searchAreas}
               />
               {query.length > 0 && (
-                <TouchableOpacity onPress={() => setQuery("")} style={styles.clearBtn}>
+                <TouchableOpacity
+                  onPress={() => setQuery("")}
+                  style={styles.clearBtn}
+                >
                   <X size={18} color={COLORS.darkGray} />
                 </TouchableOpacity>
               )}
             </View>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.pickMapButton}
               onPress={() => setIsPickingLocation(true)}
             >
@@ -247,7 +308,10 @@ export const AreaSelectionModal = ({
           </View>
 
           {loading && (
-            <ActivityIndicator color={COLORS.primary} style={{ marginVertical: SPACING.md }} />
+            <ActivityIndicator
+              color={COLORS.primary}
+              style={{ marginVertical: SPACING.md }}
+            />
           )}
 
           <View style={{ flex: 1 }}>
@@ -262,8 +326,12 @@ export const AreaSelectionModal = ({
                   >
                     <MapPin size={18} color={COLORS.darkGray} />
                     <View>
-                      <Text style={styles.predictionPrimary}>{item.structured_formatting.main_text}</Text>
-                      <Text style={styles.predictionSecondary}>{item.structured_formatting.secondary_text}</Text>
+                      <Text style={styles.predictionPrimary}>
+                        {item.structured_formatting.main_text}
+                      </Text>
+                      <Text style={styles.predictionSecondary}>
+                        {item.structured_formatting.secondary_text}
+                      </Text>
                     </View>
                   </TouchableOpacity>
                 )}
@@ -271,13 +339,17 @@ export const AreaSelectionModal = ({
                 keyboardShouldPersistTaps="handled"
               />
             ) : query.length >= 3 && !loading ? (
-                <Text style={styles.emptyStateText}>No valid areas found for &quot;{query}&quot;</Text>
+              <Text style={styles.emptyStateText}>
+                No valid areas found for &quot;{query}&quot;
+              </Text>
             ) : (
               <View style={{ flex: 1 }}>
                 <Text style={styles.sectionTitle}>Your Selected Areas</Text>
                 {preferredAreas.length === 0 ? (
                   <View style={styles.emptyState}>
-                    <Text style={styles.emptyStateText}>No areas added yet.</Text>
+                    <Text style={styles.emptyStateText}>
+                      No areas added yet.
+                    </Text>
                   </View>
                 ) : (
                   <FlatList
@@ -297,17 +369,16 @@ export const AreaSelectionModal = ({
                         </TouchableOpacity>
                       </View>
                     )}
-                    contentContainerStyle={{ paddingBottom: insets.bottom + SPACING.lg }}
+                    contentContainerStyle={{
+                      paddingBottom: insets.bottom + SPACING.lg,
+                    }}
                   />
                 )}
               </View>
             )}
           </View>
 
-          <TouchableOpacity
-            style={[styles.doneButton]}
-            onPress={onClose}
-          >
+          <TouchableOpacity style={[styles.doneButton]} onPress={onClose}>
             <Text style={styles.doneButtonText}>DONE</Text>
           </TouchableOpacity>
         </View>
@@ -401,7 +472,7 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     justifyContent: "center",
     alignItems: "center",
-    paddingBottom: 40, 
+    paddingBottom: 40,
   },
   pickedAreaContainer: {
     backgroundColor: COLORS.gray,
