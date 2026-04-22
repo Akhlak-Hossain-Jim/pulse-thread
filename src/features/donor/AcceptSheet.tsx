@@ -21,7 +21,15 @@ const formatEta = (minutes: number) => {
   return `Estimated arrival time: ${now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
 };
 
+// Use the restricted ANDROID key with header injection.
 const GOOGLE_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_ANDROID;
+const GOOGLE_HEADERS = {
+  "X-Android-Package": "dev.akhlak.app.pulsethread",
+  "X-Android-Cert": (process.env.EXPO_PUBLIC_GOOGLE_MAPS_SHA1 || "").replace(
+    /:/g,
+    "",
+  ),
+};
 
 interface AcceptSheetProps {
   request: any | null; // Replace 'any' with proper type from database
@@ -71,11 +79,11 @@ export const AcceptSheet = ({
           if (GOOGLE_API_KEY) {
             const res = await fetch(
               `https://maps.googleapis.com/maps/api/directions/json?origin=${donorLat},${donorLng}&destination=${destLat},${destLng}&key=${GOOGLE_API_KEY}`,
+              { headers: GOOGLE_HEADERS },
             );
             const data = await res.json();
 
             if (data.status === "OK" && data.routes[0]?.legs[0]) {
-              const durationText = data.routes[0].legs[0].duration.text; // e.g. "15 mins"
               const durationValue = data.routes[0].legs[0].duration.value; // seconds
               etaMessage = formatEta(Math.round(durationValue / 60));
             }
@@ -129,7 +137,11 @@ export const AcceptSheet = ({
       <View style={styles.overlay}>
         <View style={styles.sheet}>
           <View style={styles.header}>
-            <Text style={styles.title}>{request.scheduled_datetime ? "Scheduled Request" : "Emergency Request"}</Text>
+            <Text style={styles.title}>
+              {request.scheduled_datetime
+                ? "Scheduled Request"
+                : "Emergency Request"}
+            </Text>
             <TouchableOpacity onPress={onClose}>
               <X color={COLORS.text} size={24} />
             </TouchableOpacity>
@@ -155,7 +167,10 @@ export const AcceptSheet = ({
               <View style={styles.infoRow}>
                 <Text style={styles.label}>Scheduled Time</Text>
                 <Text style={styles.value}>
-                  {new Date(request.scheduled_datetime).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
+                  {new Date(request.scheduled_datetime).toLocaleString([], {
+                    dateStyle: "medium",
+                    timeStyle: "short",
+                  })}
                 </Text>
               </View>
             )}
