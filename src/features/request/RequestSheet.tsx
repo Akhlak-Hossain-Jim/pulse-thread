@@ -1,5 +1,11 @@
 import { useRouter } from "expo-router";
-import { ArrowLeft, MapPin, Navigation, X, Calendar } from "lucide-react-native";
+import {
+  ArrowLeft,
+  Calendar,
+  MapPin,
+  Navigation,
+  X,
+} from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -29,7 +35,15 @@ interface RequestSheetProps {
   selectedLocation?: any;
 }
 
+// Use the restricted ANDROID key with header injection.
 const GOOGLE_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_ANDROID;
+const GOOGLE_HEADERS = {
+  "X-Android-Package": "dev.akhlak.app.pulsethread",
+  "X-Android-Cert": (process.env.EXPO_PUBLIC_GOOGLE_MAPS_SHA1 || "").replace(
+    /:/g,
+    "",
+  ),
+};
 
 export const RequestSheet = ({
   visible,
@@ -51,8 +65,6 @@ export const RequestSheet = ({
   const [loading, setLoading] = useState(false);
   const [useGPS, setUseGPS] = useState(false);
 
-  // Search State
-  const [query, setQuery] = useState("");
   const [predictions, setPredictions] = useState<any[]>([]);
   const [showPredictions, setShowPredictions] = useState(false);
   const [selectedPlace, setSelectedPlace] = useState<any>(null);
@@ -62,30 +74,28 @@ export const RequestSheet = ({
   const [scheduledDate, setScheduledDate] = useState<Date | null>(null);
   const [isDatePickerVisible, setDatePickerVisibility] = useState(false);
 
-
   // No longer using preferred areas in request flow
 
   useEffect(() => {
     if (selectedLocation) {
-        // Regular Request Flow pin dropping
-        setHospital(selectedLocation.address || "Pinned Location");
-        setArea(""); // Will be extracted on submit
-        setSelectedPlace({
-          geometry: {
-            location: {
-              lat: selectedLocation.latitude,
-              lng: selectedLocation.longitude,
-            },
+      // Regular Request Flow pin dropping
+      setHospital(selectedLocation.address || "Pinned Location");
+      setArea(""); // Will be extracted on submit
+      setSelectedPlace({
+        geometry: {
+          location: {
+            lat: selectedLocation.latitude,
+            lng: selectedLocation.longitude,
           },
-          name: "Pinned Location",
-        });
-        setUseGPS(false);
-        setShowPredictions(false);
+        },
+        name: "Pinned Location",
+      });
+      setUseGPS(false);
+      setShowPredictions(false);
     }
   }, [selectedLocation]);
 
   const searchPlacesAndAreas = async (text: string) => {
-    setQuery(text);
     setHospital(text);
     setSelectedPlace(null);
     setUseGPS(false);
@@ -106,6 +116,7 @@ export const RequestSheet = ({
       // Ensure at least one medical type matches or is biased towards medical facilities
       const res = await fetch(
         `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${text}&key=${GOOGLE_API_KEY}&types=hospital${locationBias}`,
+        { headers: GOOGLE_HEADERS },
       );
       const data = await res.json();
       if (data.status === "OK") {
@@ -124,6 +135,7 @@ export const RequestSheet = ({
     try {
       const res = await fetch(
         `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=geometry,name,address_components&key=${GOOGLE_API_KEY}`,
+        { headers: GOOGLE_HEADERS },
       );
       const data = await res.json();
       if (data.status === "OK") {
@@ -166,6 +178,7 @@ export const RequestSheet = ({
     try {
       const res = await fetch(
         `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${GOOGLE_API_KEY}`,
+        { headers: GOOGLE_HEADERS },
       );
       const data = await res.json();
       if (data.status === "OK" && data.results.length > 0) {
@@ -238,7 +251,7 @@ export const RequestSheet = ({
     if (hospital && !selectedPlace && !selectedLocation && !useGPS) {
       PlatformAlert.alert(
         "Selection Required",
-        "Please select a valid hospital from the search suggestions or use the 'Current Location' button."
+        "Please select a valid hospital from the search suggestions or use the 'Current Location' button.",
       );
       return;
     }
@@ -289,6 +302,7 @@ export const RequestSheet = ({
           const radius = 1000; // Increased radius to 1km to account for large campus/GPS variance
           const nearbyRes = await fetch(
             `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${finalLat},${finalLng}&radius=${radius}&type=hospital&keyword=hospital|clinic|medical&key=${GOOGLE_API_KEY}`,
+            { headers: GOOGLE_HEADERS },
           );
           const nearbyData = await nearbyRes.json();
 
@@ -323,6 +337,7 @@ export const RequestSheet = ({
         try {
           const geoRes = await fetch(
             `https://maps.googleapis.com/maps/api/geocode/json?latlng=${finalLat},${finalLng}&key=${GOOGLE_API_KEY}`,
+            { headers: GOOGLE_HEADERS },
           );
           const geoData = await geoRes.json();
           if (geoData.status === "OK" && geoData.results[0]) {
@@ -360,7 +375,8 @@ export const RequestSheet = ({
         urgency,
         component_type: componentType,
         status: "PENDING",
-        scheduled_datetime: isScheduled && scheduledDate ? scheduledDate.toISOString() : null,
+        scheduled_datetime:
+          isScheduled && scheduledDate ? scheduledDate.toISOString() : null,
       });
 
       if (error) throw error;
@@ -369,7 +385,6 @@ export const RequestSheet = ({
       setBloodType("");
       setHospital("");
       setArea("");
-      setQuery("");
       setUnits("1");
       setUrgency("Standard");
       setComponentType("Whole Blood");
@@ -451,9 +466,17 @@ export const RequestSheet = ({
             </TouchableOpacity>
           </View>
 
-          <View style={[styles.form, { flex: showPredictions ? 1 : undefined, flexShrink: 1 }]}>
+          <View
+            style={[
+              styles.form,
+              { flex: showPredictions ? 1 : undefined, flexShrink: 1 },
+            ]}
+          >
             {step === 1 ? (
-              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: SPACING.md }}>
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={{ paddingBottom: SPACING.md }}
+              >
                 <Text style={styles.label}>Blood Type</Text>
                 <View style={styles.chipsContainer}>
                   {BLOOD_TYPES.map((type) => (
@@ -543,23 +566,25 @@ export const RequestSheet = ({
                 <Text style={styles.label}>Request Timing</Text>
                 <View style={styles.urgencyContainer}>
                   {[
-                    { id: 'instant', label: 'Instant' },
-                    { id: 'scheduled', label: 'Schedule' }
+                    { id: "instant", label: "Instant" },
+                    { id: "scheduled", label: "Schedule" },
                   ].map((option) => (
                     <TouchableOpacity
                       key={option.id}
                       style={[
                         styles.urgencyButton,
-                        (!isScheduled && option.id === 'instant') || (isScheduled && option.id === 'scheduled')
+                        (!isScheduled && option.id === "instant") ||
+                        (isScheduled && option.id === "scheduled")
                           ? styles.activeUrgencyButton
                           : null,
                       ]}
-                      onPress={() => setIsScheduled(option.id === 'scheduled')}
+                      onPress={() => setIsScheduled(option.id === "scheduled")}
                     >
                       <Text
                         style={[
                           styles.urgencyText,
-                          (!isScheduled && option.id === 'instant') || (isScheduled && option.id === 'scheduled')
+                          (!isScheduled && option.id === "instant") ||
+                          (isScheduled && option.id === "scheduled")
                             ? styles.activeUrgencyText
                             : null,
                         ]}
@@ -574,12 +599,28 @@ export const RequestSheet = ({
                   <>
                     <Text style={styles.label}>Scheduled Date & Time</Text>
                     <TouchableOpacity
-                      style={[styles.input, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.md }]}
+                      style={[
+                        styles.input,
+                        {
+                          flexDirection: "row",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          marginBottom: SPACING.md,
+                        },
+                      ]}
                       onPress={() => setDatePickerVisibility(true)}
                     >
-                      <Text style={{ color: scheduledDate ? COLORS.text : COLORS.darkGray, fontSize: TYPOGRAPHY.sizes.md }}>
-                        {scheduledDate 
-                          ? scheduledDate.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) 
+                      <Text
+                        style={{
+                          color: scheduledDate ? COLORS.text : COLORS.darkGray,
+                          fontSize: TYPOGRAPHY.sizes.md,
+                        }}
+                      >
+                        {scheduledDate
+                          ? scheduledDate.toLocaleString([], {
+                              dateStyle: "medium",
+                              timeStyle: "short",
+                            })
                           : "Select Date & Time"}
                       </Text>
                       <Calendar color={COLORS.primary} size={20} />
@@ -594,7 +635,9 @@ export const RequestSheet = ({
                       }}
                       onCancel={() => setDatePickerVisibility(false)}
                       minimumDate={new Date(Date.now() + 24 * 60 * 60 * 1000)}
-                      maximumDate={new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)}
+                      maximumDate={
+                        new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+                      }
                     />
                   </>
                 )}
@@ -624,7 +667,6 @@ export const RequestSheet = ({
                     <TouchableOpacity
                       onPress={() => {
                         setHospital("");
-                        setQuery("");
                         setShowPredictions(false);
                       }}
                       style={styles.clearBtn}
@@ -692,7 +734,10 @@ export const RequestSheet = ({
                       disabled={
                         loading ||
                         (!selectedPlace && !selectedLocation && !useGPS) ||
-                        (!selectedPlace && !selectedLocation && !useGPS && hospital.length > 0)
+                        (!selectedPlace &&
+                          !selectedLocation &&
+                          !useGPS &&
+                          hospital.length > 0)
                       }
                     >
                       {loading ? (
