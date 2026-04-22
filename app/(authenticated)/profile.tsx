@@ -1,6 +1,8 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Device from "expo-device";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Notifications from "expo-notifications";
+import { Link } from "expo-router";
 import * as Sharing from "expo-sharing";
 import {
   Award,
@@ -17,10 +19,8 @@ import {
   Megaphone,
   Save,
   Share2,
-  X,
   Zap,
 } from "lucide-react-native";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -35,12 +35,11 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import DateTimePickerModal from "react-native-modal-datetime-picker";
 import QRCode from "react-native-qrcode-svg";
 import { captureRef } from "react-native-view-shot";
-import DateTimePickerModal from "react-native-modal-datetime-picker";
-import { Link } from "expo-router";
-import LearningModal from "../../src/components/LearningModal";
 import { AreaSelectionModal } from "../../src/components/AreaSelectionModal";
+import LearningModal from "../../src/components/LearningModal";
 import {
   COLORS,
   SHADOWS,
@@ -109,8 +108,6 @@ export default function ProfileScreen() {
   const cardRef = useRef<View>(null);
   const storyRef = useRef<View>(null);
 
-  const GOOGLE_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_ANDROID;
-
   const fetchProfile = async () => {
     try {
       setLoading(true);
@@ -134,7 +131,9 @@ export default function ProfileScreen() {
         setBloodType(data.blood_type || "");
         setAge(data.age || null);
         setWeight(data.weight || null);
-        setLastDonationDate(data.last_donation_date ? new Date(data.last_donation_date) : null);
+        setLastDonationDate(
+          data.last_donation_date ? new Date(data.last_donation_date) : null,
+        );
         setIsDonorActive(data.is_donor_active || false);
         setExpoPushToken(data.expo_push_token || "");
         setPreferredAreas(data.preferred_areas || []);
@@ -143,14 +142,16 @@ export default function ProfileScreen() {
       // Fetch user badges
       const { data: badgesData, error: badgesError } = await supabase
         .from("user_badges")
-        .select(`
+        .select(
+          `
           awarded_at,
           badges (
             id,
             name,
             icon_name
           )
-        `)
+        `,
+        )
         .eq("user_id", session?.user.id)
         .order("awarded_at", { ascending: false });
 
@@ -159,9 +160,13 @@ export default function ProfileScreen() {
         setUserBadges(extractedBadges);
 
         // Learning Modal Auto-Open Logic
-        const hasMasterBadge = extractedBadges.some(b => b.id === "onboarding_master");
+        const hasMasterBadge = extractedBadges.some(
+          (b) => b.id === "onboarding_master",
+        );
         if (!hasMasterBadge) {
-          const hasShownModal = await AsyncStorage.getItem("has_shown_learning_modal");
+          const hasShownModal = await AsyncStorage.getItem(
+            "has_shown_learning_modal",
+          );
           if (!hasShownModal) {
             setLearningModalVisible(true);
             await AsyncStorage.setItem("has_shown_learning_modal", "true");
@@ -203,7 +208,9 @@ export default function ProfileScreen() {
         blood_type: bloodType,
         age,
         weight,
-        last_donation_date: lastDonationDate ? lastDonationDate.toISOString() : null,
+        last_donation_date: lastDonationDate
+          ? lastDonationDate.toISOString()
+          : null,
         is_donor_active: isDonorActive,
         expo_push_token: currentPushToken,
         preferred_areas: preferredAreas,
@@ -214,7 +221,7 @@ export default function ProfileScreen() {
       // Debug alert to help user verify the data
       Alert.alert(
         "Debugging Save",
-        `Sending ${updates.preferred_areas.length} areas: ${updates.preferred_areas.join(", ")}`
+        `Sending ${updates.preferred_areas.length} areas: ${updates.preferred_areas.join(", ")}`,
       );
 
       const { error } = await supabase
@@ -249,7 +256,7 @@ export default function ProfileScreen() {
     setLastDonationDate(date);
     hideDatePicker();
   };
-  
+
   // Area management moved to AreaSelectionModal
 
   async function registerForPushNotificationsAsync() {
@@ -392,14 +399,32 @@ export default function ProfileScreen() {
                     contentContainerStyle={{ paddingHorizontal: SPACING.md }}
                     style={{ marginBottom: SPACING.lg }}
                   >
-                    <View style={[styles.badgesWrapper, { width: undefined, gap: 12 }]}>
+                    <View
+                      style={[
+                        styles.badgesWrapper,
+                        { width: undefined, gap: 12 },
+                      ]}
+                    >
                       {userBadges.map((badge, idx) => (
-                        <View key={idx} style={[styles.badgeItem, idx === 0 && styles.activeDonorBadge]}>
-                          {getIconComponent(badge.icon_name, 16, idx === 0 ? COLORS.white : COLORS.primary)}
+                        <View
+                          key={idx}
+                          style={[
+                            styles.badgeItem,
+                            idx === 0 && styles.activeDonorBadge,
+                          ]}
+                        >
+                          {getIconComponent(
+                            badge.icon_name,
+                            16,
+                            idx === 0 ? COLORS.white : COLORS.primary,
+                          )}
                           <Text
                             style={[
                               styles.badgeLabel,
-                              idx === 0 && { color: COLORS.white, fontWeight: "700" },
+                              idx === 0 && {
+                                color: COLORS.white,
+                                fontWeight: "700",
+                              },
                             ]}
                           >
                             {badge.name}
@@ -499,7 +524,13 @@ export default function ProfileScreen() {
                       style={styles.input}
                       onPress={showDatePicker}
                     >
-                      <Text style={{color: lastDonationDate ? COLORS.text : COLORS.darkGray}}>
+                      <Text
+                        style={{
+                          color: lastDonationDate
+                            ? COLORS.text
+                            : COLORS.darkGray,
+                        }}
+                      >
                         {lastDonationDate
                           ? lastDonationDate.toLocaleDateString()
                           : "Select a date"}
@@ -540,8 +571,17 @@ export default function ProfileScreen() {
 
                   {isDonorActive && (
                     <View style={styles.inputGroup}>
-                      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: SPACING.sm }}>
-                        <Text style={styles.label}>Preferred Donation Areas</Text>
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          marginBottom: SPACING.sm,
+                        }}
+                      >
+                        <Text style={styles.label}>
+                          Preferred Donation Areas
+                        </Text>
                         <TouchableOpacity
                           onPress={() => setAreaModalVisible(true)}
                           style={styles.manageBtn}
@@ -556,14 +596,18 @@ export default function ProfileScreen() {
                           onPress={() => setAreaModalVisible(true)}
                         >
                           <MapPin size={24} color={COLORS.darkGray} />
-                          <Text style={styles.helperText}>No preferred areas added yet. Tap to manage.</Text>
+                          <Text style={styles.helperText}>
+                            No preferred areas added yet. Tap to manage.
+                          </Text>
                         </TouchableOpacity>
                       ) : (
                         <View style={styles.areasList}>
                           {preferredAreas.map((area) => (
                             <View key={area} style={styles.areaListItem}>
                               <MapPin size={16} color={COLORS.primary} />
-                              <Text style={styles.areaListItemText}>{area}</Text>
+                              <Text style={styles.areaListItemText}>
+                                {area}
+                              </Text>
                             </View>
                           ))}
                         </View>
@@ -597,7 +641,9 @@ export default function ProfileScreen() {
               <View style={styles.infoLinksContainer}>
                 <Link href="/info/privacy" asChild>
                   <TouchableOpacity style={styles.infoLink}>
-                    <Text style={styles.infoLinkText}>Privacy & Data Policy</Text>
+                    <Text style={styles.infoLinkText}>
+                      Privacy & Data Policy
+                    </Text>
                     <ChevronRight size={20} color={COLORS.darkGray} />
                   </TouchableOpacity>
                 </Link>
@@ -653,7 +699,9 @@ export default function ProfileScreen() {
             style={styles.learningButton}
             onPress={() => setLearningModalVisible(true)}
           >
-            <Text style={styles.learningButtonText}>Revisit Learning Modules</Text>
+            <Text style={styles.learningButtonText}>
+              Revisit Learning Modules
+            </Text>
           </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -804,12 +852,19 @@ export default function ProfileScreen() {
                         },
                       ]}
                     >
-                      {getIconComponent(badge.icon_name, 24, idx === 0 ? COLORS.white : COLORS.primary)}
+                      {getIconComponent(
+                        badge.icon_name,
+                        24,
+                        idx === 0 ? COLORS.white : COLORS.primary,
+                      )}
                       <Text
                         style={[
                           styles.badgeLabel,
                           { fontSize: 20 },
-                          idx === 0 && { color: COLORS.white, fontWeight: "700" },
+                          idx === 0 && {
+                            color: COLORS.white,
+                            fontWeight: "700",
+                          },
                         ]}
                       >
                         {badge.name}
