@@ -1,4 +1,5 @@
 import * as Location from "expo-location";
+import { useRouter } from "expo-router";
 import { Navigation, X } from "lucide-react-native";
 import React, { useState } from "react";
 import {
@@ -45,6 +46,7 @@ export const AcceptSheet = ({
   onSuccess,
 }: AcceptSheetProps) => {
   const { session } = useAuth();
+  const router = useRouter();
   const [loading, setLoading] = useState(false);
 
   if (!request) return null;
@@ -89,6 +91,37 @@ export const AcceptSheet = ({
             }
           }
         }
+      }
+
+      // 1.5 Ensure profile exists (to avoid FK violation)
+      const { data: profile, error: profileCheckError } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("id", session.user.id)
+        .maybeSingle();
+
+      if (profileCheckError) throw profileCheckError;
+
+      if (!profile) {
+        PlatformAlert.alert(
+          "Complete Your Profile",
+          "You need to complete your profile before you can accept donation requests.",
+          [
+            {
+              text: "Cancel",
+              style: "cancel",
+              onPress: () => setLoading(false),
+            },
+            {
+              text: "Go to Profile",
+              onPress: () => {
+                onClose();
+                router.push("/(authenticated)/profile");
+              },
+            },
+          ],
+        );
+        return;
       }
 
       // 2. Create Donation Record
