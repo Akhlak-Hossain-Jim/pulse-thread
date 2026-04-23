@@ -226,8 +226,7 @@ export default function ProfileScreen() {
 
       const { error } = await supabase
         .from("profiles")
-        .update(updates)
-        .eq("id", session.user.id);
+        .upsert(updates);
 
       if (error) {
         console.error("Supabase error:", error);
